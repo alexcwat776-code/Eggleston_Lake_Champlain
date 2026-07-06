@@ -1,0 +1,131 @@
+configfile: "config.yaml"
+FASTQ = config["fastq_dir"]
+RES = config["results_dir"]
+SITES = config["sites"]
+# sample IDs for a site
+def samples_of(site):
+    return list(SITES[site].keys())
+# comma-joined R1/R2 paths for a site's co-assembly
+def site_reads(site, read):
+    suffix = "_R1_001.fastq.gz" if read == 1 else "_R2_001.fastq.gz"
+    return ",".join(f"{FASTQ}/{stem}{suffix}" for stem in SITES[site].values())
+# single-sample R1/R2 path
+def sample_read(site, sample, read):
+    suffix = "_R1_001.fastq.gz" if read == 1 else "_R2_001.fastq.gz"
+    return f"{FASTQ}/{SITES[site][sample]}{suffix}"
+rule all:
+    input:
+        expand(f"{RES}/{{site}}/checkm/quality_report.tsv", site=SITES.keys())
+# megahit won't write into an existing dir but snakemake pre-creates output parents, so declare the dir as output and rm it in the shell before megahit runs
+rule megahit:
+    output:
+        contigs = f"{RES}/{{site}}/megahit/final.contigs.fa"
+    params:
+        r1 = lambda wc: site_reads(wc.site, 1),
+        r2 = lambda wc: site_reads(wc.site, 2),
+        outdir = lambda wc: f"{RES}/{wc.site}/megahit",
+        mcl = config["min_contig_len"],
+        mc = config["min_count"]
+    threads: 16
+    resources:
+        mem_mb = 80000,
+        time = "168:00:00"
+    conda: config["env_tools"]
+    shell:
+        r"""
+        rm -rf {params.outdir}
+        megahit -1 {params.r1} -2 {params.r2} -o {params.outdir} \
+            --min-contig-len {params.mcl} --min-count {params.mc} \
+            --no-mercy -m 80000000000 -t {threads}
+        """
+rule bowtie_index:
+    input:
+        contigs = f"{RES}/{{site}}/megahit/final.contigs.fa"
+    output:
+        idx = f"{RES}/{{site}}/megahit/contigs_index.1.bt2"
+    params:
+        prefix = lambda wc: f"{RES}/{wc.site}/megahit/contigs_index"
+    threads: 16
+    resources:
+        mem_mb = 40000,
+        time = "4:00:00"
+    conda: config["env_tools"]
+    shell:
+        "bowtie2-build --threads {threads} {input.contigs} {params.prefix}"
+rule map_sample:
+    input:
+        idx = f"{RES}/{{site}}/megahit/contigs_index.1.bt2"
+    output:
+        bam = f"{RES}/{{site}}/mapped/{{sample}}.bam",
+        bai = f"{RES}/{{site}}/mapped/{{sample}}.bam.bai"
+    params:
+        prefix = lambda wc: f"{RES}/{wc.site}/megahit/contigs_index",
+        r1 = lambda wc: sample_read(wc.site, wc.sample, 1),
+        r2 = lambda wc: sample_read(wc.site, wc.sample, 2),
+        sam = lambda wc: f"{RES}/{wc.site}/mapped/{wc.sample}.sam"
+    threads: 16
+    resources:
+        mem_mb = 40000,
+        time = "4:00:00"
+    conda: config["env_tools"]
+    shell:
+        r"""
+        bowtie2 -p {threads} -x {params.prefix} -1 {params.r1} -2 {params.r2} -S {params.sam}
+        samtools view -bS {params.sam} | samtools sort -o {output.bam}
+        samtools index {output.bam}
+        rm -f {params.sam}
+        """
+rule depth:
+    input:
+        bams = lambda wc: expand(f"{RES}/{wc.site}/mapped/{{sample}}.bam",
+                                 sample=samples_of(wc.site))
+    output:
+        depth = f"{RES}/{{site}}/bins/depth.txt"
+    threads: 16
+    resources:
+        mem_mb = 40000,
+        time = "4:00:00"
+    conda: config["env_tools"]
+    shell:
+        "jgi_summarize_bam_contig_depths --outputDepth {output.depth} {input.bams}"
+rule metabat2:
+    input:
+        contigs = f"{RES}/{{site}}/megahit/final.contigs.fa",
+        depth = f"{RES}/{{site}}/bins/depth.txt"
+    output:
+        marker = f"{RES}/{{site}}/bins/.binning_done"
+    params:
+        prefix = lambda wc: f"{RES}/{wc.site}/bins/bin",
+        mcl = config["min_contig_len"]
+    threads: 16
+    resources:
+        mem_mb = 40000,
+        time = "4:00:00"
+    conda: config["env_tools"]
+    shell:
+        r"""
+        metabat2 -i {input.contigs} -a {input.depth} -o {params.prefix} -t {threads} -m {params.mcl}
+        touch {output.marker}
+        """
+# checkm runs in its own env (python 3.9, incompatible with the main env)
+rule checkm:
+    input:
+        marker = f"{RES}/{{site}}/bins/.binning_done"
+    output:
+        report = f"{RES}/{{site}}/checkm/quality_report.tsv"
+    params:
+        bindir = lambda wc: f"{RES}/{wc.site}/bins",
+        outdir = lambda wc: f"{RES}/{wc.site}/checkm",
+        cmdata = config["checkm_data"]
+    threads: 16
+    resources:
+        mem_mb = 80000,
+        time = "12:00:00"
+    conda: config["env_checkm"]
+    shell:
+        r"""
+        rm -rf {params.outdir}
+        checkm data setRoot {params.cmdata}
+        checkm lineage_wf --reduced_tree -x fa -t {threads} \
+            --tab_table -f {output.report} {params.bindir} {params.outdir}
+        """

@@ -1,0 +1,49 @@
+# Eggleston Metagenomes — artifact manifest
+# generated Tue Jun 30 14:59:09 EDT 2026
+
+## SLURM scripts
+-rw-r--r-- 1 achrostowski achrostowski  787 Jun 24 22:03 bin_MIS3.slurm
+-rw-r--r-- 1 achrostowski achrostowski  712 Jun 24 22:14 checkm_MIS3.slurm
+-rw-r--r-- 1 achrostowski achrostowski  890 Jun 24 16:51 map_E508.slurm
+-rw-r--r-- 1 achrostowski achrostowski  935 Jun 24 20:20 map_E508_to_MIS3.slurm
+-rw-r--r-- 1 achrostowski achrostowski 1149 Jun 24 20:27 map_MIS3_rest.slurm
+-rw-r--r-- 1 achrostowski achrostowski  726 Jun 24 16:38 megahit_trial_E508.slurm
+-rw-r--r-- 1 achrostowski achrostowski  870 Jun 24 17:01 megahit_trial_MIS3.slurm
+-rw-r--r-- 1 achrostowski achrostowski  675 Jun 26 09:41 prokka_bin52.slurm
+-rw-r--r-- 1 achrostowski achrostowski 1103 Jun 29 13:14 run_MAB.slurm
+-rw-r--r-- 1 achrostowski achrostowski 1103 Jun 29 03:10 run_MIS.slurm
+-rw-r--r-- 1 achrostowski achrostowski 1103 Jun 29 13:14 run_STA.slurm
+-rw-r--r-- 1 achrostowski achrostowski  934 Jun 29 11:46 run_anvio_profile_MIS.slurm
+-rw-r--r-- 1 achrostowski achrostowski 2322 Jun 30 13:27 run_anvio_site.slurm
+
+## Pipeline files
+-rw-r--r-- 1 achrostowski achrostowski 5365 Jun 29 01:46 Snakefile
+-rw-r--r-- 1 achrostowski achrostowski 1082 Jun 29 01:50 config.yaml
+
+## Per-site results (bins / assembly / quality)
+### MIS
+  bins: 185
+  assembly: 242070157 bytes
+  checkm table: results/MIS/checkm_MIS_quality.tsv
+### STA
+  bins: 126
+  assembly: 208064209 bytes
+  checkm table: results/STA/checkm_STA_quality.tsv
+### MAB
+  bins: 121
+  assembly: 210379286 bytes
+  checkm table: results/MAB/checkm_MAB_quality.tsv
+
+## anvi'o databases per site
+### MIS
+-rw-r--r-- 1 achrostowski achrostowski 478437376 Jun 29 11:04 anvio_MIS/CONTIGS.db
+-rw-r--r-- 1 achrostowski achrostowski 912752640 Jun 29 13:05 anvio_MIS/MERGED-PROFILE/PROFILE.db
+-rw-r--r-- 1 achrostowski achrostowski   1081742 Jun 29 13:04 anvio_MIS/collection_metabat2.txt
+### STA
+-rw-r--r-- 1 achrostowski achrostowski 404176896 Jun 30 13:32 anvio_STA/CONTIGS.db
+-rw-r--r-- 1 achrostowski achrostowski 924688384 Jun 30 14:07 anvio_STA/MERGED-PROFILE/PROFILE.db
+-rw-r--r-- 1 achrostowski achrostowski    957025 Jun 30 14:07 anvio_STA/collection_metabat2.txt
+### MAB
+-rw-r--r-- 1 achrostowski achrostowski 407154688 Jun 30 13:32 anvio_MAB/CONTIGS.db
+-rw-r--r-- 1 achrostowski achrostowski 696852480 Jun 30 14:04 anvio_MAB/MERGED-PROFILE/PROFILE.db
+-rw-r--r-- 1 achrostowski achrostowski   1025160 Jun 30 14:04 anvio_MAB/collection_metabat2.txt
