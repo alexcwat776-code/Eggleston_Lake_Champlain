@@ -1,0 +1,44 @@
+fastq_dir: "fastq"
+results_dir: "results"
+env_tools: "Metagenomics_Eggleston_Lab"  # conda env name with the pipeline tools
+env_checkm: "checkm"  # conda env name with checkm
+checkm_data: "/home/achrostowski/.conda/envs/Metagenomics_Eggleston_Lab/checkm_data"  # point this to your checkm data folder
+min_contig_len: 1500
+min_count: 3
+# sites and their samples, edit to match your own. left side is the sample id, right side is the fastq filename stem (before _R1/_R2)
+sites:
+  MIS:
+    E508: "E508_S57_L001"
+    E514: "E514_S60_L001"
+    E523: "E523_S63_L001"
+    E532: "E532_S66_L001"
+    E538: "E538_S69_L001"
+    E544: "E544_S72_L001"
+    E553: "E553_S75_L001"
+    E562: "E562_S78_L001"
+    E574: "E574_S81_L001"
+    E577: "E577_S84_L001"
+    E586: "E586_S87_L001"
+  STA:
+    E509: "E509_S58_L001"
+    E515: "E515_S61_L001"
+    E524: "E524_S64_L001"
+    E533: "E533_S67_L001"
+    E539: "E539_S70_L001"
+    E545: "E545_S73_L001"
+    E554: "E554_S76_L001"
+    E563: "E563_S79_L001"
+    E575: "E575_S82_L001"
+    E578: "E578_S85_L001"
+    E587: "E587_S88_L001"
+  MAB:
+    E516: "E516_S62_L001"
+    E525: "E525_S65_L001"
+    E534: "E534_S68_L001"
+    E540: "E540_S71_L001"
+    E546: "E546_S74_L001"
+    E555: "E555_S77_L001"
+    E564: "E564_S80_L001"
+    E576: "E576_S83_L001"
+    E579: "E579_S86_L001"
+    E588: "E588_S56_L001"
