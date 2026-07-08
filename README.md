@@ -21,17 +21,27 @@ Most of this is wrapped in the Snakemake workflow (Snakefile and config.yaml), s
 
 
 What you need to change:
+
 Read the comments in each script before you run it. A few lines show up in most scripts that you have to configure for your own setup.
+
 #Your email at the top of each SLURM script
+
 #SBATCH --mail-user=you@youremail.com
+
 #The cluster settings, since queue names and limits differ by cluster
+
 #SBATCH --partition=long
+
 #SBATCH --mem=85G #MAKE SURE TO ALLOCATE A PROPER AMOUNT. MORE ALLOCATION THAN PERMITTED FOR IND. USERS RESULTS IN OOM.
+
 #SBATCH --time=168:00:00 #LIKEWISE WITH TIME. 
 
 #The conda line, pointed at wherever conda lives on your machine
+
 source /home/mlinderman/modules/miniconda3/latest/etc/profile.d/conda.sh
+
 #Your samples and sites in config.yaml, where the left side is the sample id and the right side is the fastq file name before the R1 and R2 part
+
 sites:
   MIS:
     E508: "E508_S57_L001"
