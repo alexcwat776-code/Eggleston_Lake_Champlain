@@ -55,5 +55,5 @@ sbatch run_MIS.slurm
 
 Data
 The big files (reads, bam files, databases) are not in here since github can't hold them. They live on the cluster and in the lab Google Drive.
-Questions, email me at alexcwat776@gmail.com
+Questions?...email me at alexcwat776@gmail.com
 
