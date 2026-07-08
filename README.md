@@ -43,7 +43,9 @@ source /home/mlinderman/modules/miniconda3/latest/etc/profile.d/conda.sh
 #Your samples and sites in config.yaml, where the left side is the sample id and the right side is the fastq file name before the R1 and R2 part
 
 sites:
+
   MIS:
+  
     E508: "E508_S57_L001"
     E514: "E514_S60_L001"
 
