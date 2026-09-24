@@ -11,7 +11,7 @@ run_dada2_batch.slurm        sends dada2_batch.R to SLURM
 merge_batches.R              merges all batches and assigns taxonomy
 run_merge.slurm              sends merge_batches.R to SLURM
 qc_16S.R                     sanity checks on the final tables
-16SpostProcessing-ALEX.Rmd   figures, stats, and corncob, run in RStudio
+16SpostProcessingFORALLDATA-Alex.Rmd   figures, stats, and corncob, run in RStudio
 ```
 
 ## 1. build the metadata, build_metadata.R
@@ -92,6 +92,6 @@ Rscript qc_16S.R paired
 
 *note, the 2023 samples were sequenced about 4x shallower than the newer ones, keep that in mind before comparing across years.
 
-## 5. figures, stats, and corncob, 16SpostProcessing-ALEX.Rmd
+## 5. figures, stats, and corncob, 16SpostProcessingFORALLDATA-Alex.Rmd
 
 download the three csvs and the metadata csv from ada, then open this in RStudio. what it does is laid out in `../README.md` (the amplicons overview).

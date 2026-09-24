@@ -1,0 +1,1131 @@
+---
+title: "16SpostProcessing"
+author: "Alexander Evan Chrostowski"
+date: "2026-06-05"
+output: html_document
+---
+  
+  # Loading packages
+```{r}
+#load needed packages
+#installs are commented out, but add them back as needed
+#install.packages("rlang")
+packageVersion("rlang") #v1.1.0
+#installed.packages("ggplot2")
+library(ggplot2); packageVersion("ggplot2") #v3.4.1
+theme_set(theme_bw())
+#install.packages("dplyer")
+library(dplyr); packageVersion("dplyr") #v1.0.8
+#install.packages("tidyverse")
+library(tidyverse); packageVersion("tidyverse") #v1.1.1
+#for decontaminating and filtering
+#BiocManager::install("decontam")
+library(decontam); packageVersion("decontam") #v1.12.0
+#For ordinations and other microbial community analyses
+#BiocManager::install("phyloseq")
+library(phyloseq); packageVersion("phyloseq")
+library(vegan); packageVersion("vegan")
+#BiocManager::install("corncob")
+library(corncob); packageVersion("corncob"); citation("corncob")
+library(reshape2); packageVersion("reshape2")
+#install.packages("randomcoloR") 
+library(randomcoloR); packageVersion("randomcoloR")
+#install.packages("cowplot")
+library(cowplot); packageVersion("cowplot")
+library(grid); packageVersion("grid") #v 4.1.1
+#install.packages("gridGraphics")
+library(gridGraphics); packageVersion("gridGraphics") #v 0.5.1
+#install.packages("janitor")
+library(janitor); packageVersion("janitor") #v 2.2.0
+#install.packages("ggpubr")
+library(ggpubr); packageVersion("ggpubr") #v 0.5.0
+library(RColorBrewer)   # for brewer.pal()
+library(lubridate)      # for mdy(), year()
+```
+
+# Setting all the tables/initial variables
+```{r}
+#Load in the chloro/mito filtered data and separate accordingly. Entire dataset is used. 
+base <- "/Users/alexchrostowski/Desktop/ALEX - Eggleston Lab /new_tables"
+ASV  <- read.table(file.path(base, "ASVs_counts_ALL.csv"), sep=",", header=TRUE, row.names=1, check.names=FALSE)
+taxa <- as.matrix(read.table(file.path(base, "ASVs_taxonomy_ALL.csv"), sep=",", header=TRUE, row.names=1))
+meta <- read.table(file.path(base, "metadata_E400to672.csv"), sep=",", header=TRUE, row.names=1, check.names=FALSE)
+#clean out empty columns 
+meta <- meta[, colnames(meta) != "" & !is.na(colnames(meta))]
+
+#align columns 
+meta <- meta[colnames(ASV), , drop=FALSE]
+
+#preparation for phyloseq assembly 
+ASV <- otu_table(as.matrix(ASV), taxa_are_rows = TRUE)
+TAX <- tax_table(taxa)
+META <- sample_data(meta)
+
+#phyloseq assembly
+ps <- phyloseq(ASV, TAX, META)
+
+#displays the corresponding table 
+ps
+```
+
+# Writing and saving the tables you need for other processing
+```{r}
+#save the tables with no Mitochondrial/Chloroplast/Unknown sequences for use in other analyses as csv files.
+write.table(as(otu_table(ps), "matrix"),"ASVsF_no_chloromito.csv",sep=",",col.names=NA)
+write.table(as(tax_table(ps), "matrix"),"taxaF_no_chloromito.csv",sep=",",col.names=NA)
+write.table(as(sample_data(ps), "matrix"),"metadata_no_chloromito.csv",sep=",",col.names=NA)
+
+#save the tables with no Mitochondrial/Chloroplast/Unknown sequences for use in other analyses as csv files.
+write.table(as(otu_table(ps), "matrix"), file.path(base, "ASVsF_no_chloromito.csv"), sep=",", col.names=NA)
+write.table(as(tax_table(ps), "matrix"), file.path(base, "taxaF_no_chloromito.csv"), sep=",", col.names=NA)
+write.table(as(sample_data(ps), "matrix"), file.path(base, "metadata_no_chloromito.csv"), sep=",", col.names=NA)
+```
+
+
+# Now using those tables
+# most of this is just formatting things so they are in the correct data type
+#re-running some things if you haven't saved your environment and are coming back to this 
+```{r eval = FALSE}
+# Load in the chloro/mito filtered data
+ASV  <- read.table("ASVs_counts_ALL.csv", sep=",", header=TRUE, row.names=1, check.names=FALSE)
+taxa <- as.matrix(read.table("ASVs_taxonomy_ALL.csv", sep=",", header=TRUE, row.names=1))
+meta <- read.table("metadata_E400to672.csv", sep=",", header=TRUE, row.names=1, check.names=FALSE)
+
+ASV = otu_table(ASV, taxa_are_rows = TRUE)
+TAX = tax_table(taxa)
+META = sample_data(metadata)
+
+metadata$Bloom <- as.factor(metadata$Bloom)
+str(META)
+
+metadata %>% count(Bloom)
+metadata$Bloom
+
+metadata$Bloom[metadata$Bloom == "No"] <- 0
+metadata$Bloom[metadata$Bloom == "Yes"] <- 1
+metadata$Bloom <- ifelse(grepl("No", metadata$Bloom), 0, metadata$Bloom)
+
+ps <- phyloseq(ASV, TAX, META)
+
+metadata$BloomStatus[metadata$BloomStatus == "No"] <- NA
+metadata %>% count(BloomStatus)
+
+```
+
+
+# Processing for relative abundance
+```{r}
+# Transform counts to relative abundance
+ps_ra<-transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
+sample_data(ps_ra)$Location<-factor(sample_data(ps_ra)$Location,levels=c("MIS","STA","MAB"))
+
+# this pulls the top 0.05 instead of including all taxa -- better visualization
+ps_ra_top <- filter_taxa(ps_ra,function(x) sum (x) > .005, TRUE)
+ps_ra_top
+```
+
+#Handles date input as a parameter as opposed to hard coding associated dates
+```{r}
+sorted_dates <- format(as.Date(sample_data(ps_ra_top)$Date, format = "%m/%d/%y"), "%Y-%m-%d")
+sample_data(ps_ra_top)$Date <- factor(sorted_dates, levels = sort(unique(sorted_dates)))
+all_dates <- as.Date(levels(sample_data(ps_ra_top)$Date))
+keep  <- !duplicated(format(all_dates, "%Y-%m"))
+month_firsts <- all_dates[keep]
+dates_to_show <- format(month_firsts[seq(1, length(month_firsts), by = 3)], "%Y-%m-%d")
+dates_to_show
+```
+# PHYLUM CHART
+```{r}
+#Dating for the chart has been standardized
+ps_phylum <- ps_ra_top
+
+# create color scheme
+phyla_colors <- c(
+  "Acidobacteriota"   = "#8da0cb",   # lighter teal
+  "Actinobacteriota"  = "darkolivegreen3",   # soft light blue
+  "Armatimonadota"    = "#ffe066",   # soft yellow
+  "Bacteroidota"      = "slategray1",   # lighter blue-gray
+  "Bdellovibrionota"  = "#c48f65",   # muted tan-brown
+  "Chloroflexi"        = "#7fb2b2",   # dusty teal
+  "Cyanobacteria"     = "#228B22",   # keep deep green to stand out!
+  "Deinococcota"      = "#e6a4b4",   # dusty rose
+  "Desulfobacterota"  = "#a4c2a5",   # sage green
+  "Firmicutes"        = "#f9c785",   # soft peach
+  "Fusobacteriota"    = "#f4a582",   # soft orange-pink
+  "Gemmatimonadota"   = "#e8b2d2",   # soft pinkish purple
+  "Planctomycetota"   = "#ddadf2",   # very pale blue
+  "Proteobacteria"    = "#998fc7",   # softer muted purple
+  "Spirochaetota"     = "#c1e1c1",   # light green
+  "Verrucomicrobiota" = "#fff6a3"    # very light yellow
+)
+
+#this is the phylum plot
+p1_top <- plot_bar(ps_ra_top, x = "Date", fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold", size = 16), legend.text = element_text(size=16)) +
+  facet_grid(. ~ Location, scales = "free", space = "free")+
+  scale_fill_manual(values = phyla_colors) +
+  scale_x_discrete(
+    breaks = dates_to_show,
+    labels = function(x) format(as.Date(x), "%b %Y")  # Convert & format as "Jan 2024"
+  ) + 
+  theme(legend.position = "bottom", axis.title = element_text(size=15), title=element_text(size = 25), legend.title = element_text(size = 15)) + 
+  theme(axis.text.x = element_text(size = 13, angle = 45, hjust = 1)) +
+  labs(x="Sample Date", y = "Relative Abundance (%)")
+p1_top
+dir.create("~/Desktop/16S_figures_full", showWarnings = FALSE)
+ggsave("~/Desktop/16S_figures_full/phylum_bar.png", plot = p1_top, width = 14, height = 8, dpi = 300)
+
+```
+
+
+# CLASS PLOT
+```{r}
+#Dates have been standardized 
+
+# create color scheme
+my_colors <- c(
+  "Acidimicrobiia" = "#7B68EE",     # muted teal
+  "Acidobacteriae" = "#8da0cb",     # soft blue
+  "Actinobacteria" = "#66c2a5",     # soft pink
+  "Alphaproteobacteria" = "#1f78b4", # light green
+  "Armatimonadia" = "#ffd92f",      # bright yellow
+  "Bacilli" = "#e5c494",            # beige
+  "Bacteroidia" = "#bfdefa",        # gray
+  "Bdellovibrionia" = "#c48f65",    # muted tan-brown
+  "Blastocatellia" = "#b5d8a7",     # muted sage
+  "Clostridia" = "#dcb8f0",         # light lavender
+  "Cyanobacteriia" = "#228B22",     # bright deep blue (pops!)
+  "Deinococci" = "#e6a4b4",         # dusty rose
+  "Desulfobacteria" = "#a4c2a5",    # sage green
+  "Fusobacteriia" = "#fc8d62",      # orange
+  "Gammaproteobacteria" = "#e78ac3",# teal again (common)
+  "Gemmatimonadetes" = "#a6cee3",   # light blue
+  "Holophagae" = "#b2df8a",         # light green
+  "Ignavibacteria" = "#d9a066",     # warm tan
+  "Kapabacteria" = "#9ecae1",       # pale steel blue
+  "Leptospirae" = "#fdbf6f",        # soft orange
+  "Negativicutes" = "#f2b6c6",      # pale pink
+  "Oligoflexia" = "#c9c299",        # muted olive
+  "OM190" = "#aad8d3",              # pale teal
+  "Omnitrophia" = "#d6c6e1",        # pale purple
+  "Phycisphaerae" = "#cab2d6",      # soft purple
+  "Planctomycetes" = "#fb9a99",     # pinkish red
+  "SL56 marine group" = "#8fd9c4",  # sea green
+  "Spirochaetia" = "#c1e1c1",       # light green
+  "Subgroup 22" = "#e0c28f",        # sandy tan
+  "Thermoleophilia" = "#fdbf6f",    # soft yellow
+  "TK10" = "#bcbddc",               # dusty periwinkle
+  "vadinHA49" = "#d4a5a5",          # muted brick pink
+  "Verrucomicrobiae" = "#ffff99",   # pale yellow
+  "Vicinamibacteria" = "#ffed6f"    # strong yellow
+)
+
+labelling <- c(
+    "Acidimicrobiia" = "Acidimicrobiia",
+    "Acidobacteriae" = "Acidobacteriae",
+    "Actinobacteria" = "Actinobacteria",
+    "Alphaproteobacteria" = "Alphaproteobacteria",
+    "Armatimonadia" = "Armatimonadia",
+    "Bacilli" = "Bacilli",
+    "Bacteroidia" = "Bacteroidia",
+    "Bdellovibrionia" = "Bdellovibrionia",
+    "Blastocatellia" = "Blastocatellia",
+    "Clostridia" = "Clostridia",
+    "Cyanobacteriia" = "Cyanophyceae",  # needed to rename cyanobacteria
+    "Deinococci" = "Deinococci",
+    "Desulfobacteria" = "Desulfobacteria",
+    "Fusobacteriia" = "Fusobacteriia",
+    "Gammaproteobacteria" = "Gammaproteobacteria",
+    "Gemmatimonadetes" = "Gemmatimonadetes",
+    "Holophagae" = "Holophagae",
+    "Ignavibacteria" = "Ignavibacteria",
+    "Kapabacteria" = "Kapabacteria",
+    "Leptospirae" = "Leptospirae",
+    "Negativicutes" = "Negativicutes",
+    "Oligoflexia" = "Oligoflexia",
+    "OM190" = "OM190",
+    "Omnitrophia" = "Omnitrophia",
+    "Phycisphaerae" = "Phycisphaerae",
+    "Planctomycetes" = "Planctomycetes",
+    "SL56 marine group" = "SL56 marine group",
+    "Spirochaetia" = "Spirochaetia",
+    "Subgroup 22" = "Subgroup 22",
+    "Thermoleophilia" = "Thermoleophilia",
+    "TK10" = "TK10",
+    "vadinHA49" = "vadinHA49",
+    "Verrucomicrobiae" = "Verrucomicrobiae",
+    "Vicinamibacteria" = "Vicinamibacteria"
+  )
+
+# making the plot
+c1_top <- plot_bar(subset_samples(ps_ra_top), x = "Date", fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold", size = 16), legend.text = element_text(size=16)) +
+  facet_grid(. ~ Location, scales = "free", space = "free")+
+  #scale_fill_brewer(palette = "Set3") +
+  scale_fill_manual(values = my_colors, labels = labelling)+
+  scale_x_discrete(
+    breaks = dates_to_show,
+    labels = function(x) format(as.Date(x), "%b %Y")  # Convert & format as "Jan 2024"
+  ) + 
+  theme(legend.position = "bottom", axis.title = element_text(size=15), title=element_text(size = 25), legend.title = element_text(size = 15)) + 
+  theme(axis.text.x = element_text(size = 13, angle = 45, hjust = 1)) +
+  labs(x="Sample Date", y = "Relative Abundance (%)")
+c1_top
+ggsave("~/Desktop/16S_figures_full/class_bar.png", plot = c1_top, width = 16, height = 10, dpi = 300)
+```
+
+
+# Order and family plots
+```{r}
+order_colors <- c(
+  "Acetobacterales" = "#91bfdb",   # blue
+  "Armatimonadales" = "#fee08b",   # yellow
+  "Bacteroidales" = "#fc8d59",     # soft red-orange
+  "Burkholderiales" = "#d9ef8b",   # yellow-green
+  "Caulobacterales" = "#66c2a5",   # teal
+  "Cellvibrionales" = "#fdbb84",   # orange
+  "Chitinophagales" = "#a6d854",   # lime green
+  "Chthoniobacterales" = "#d53e4f",# strong red
+  "Competibacterales" = "#b2abd2", # purple
+  "Corynebacteriales" = "#998ec3", # blue-purple
+  "Cyanobacteriales" = "#1a9850",  # strong green
+  "Cytophagales" = "#e08214",      # rich orange
+  "Diplorickettsiales" = "#fdae61",# orange-peach
+  "Flavobacteriales" = "#3288bd",  # medium blue
+  "Frankiales" = "slategray1",        # strong red
+  "Fusobacteriales" = "#f46d43",   # coral
+  "Gammaproteobacteria Incertae Sedis" = "#8c510a", # brown
+  "Gemmatales" = "#66bd63",        # green
+  "Gemmatimonadales" = "#a6bddb",  # pale blue
+  "Holophagales" = "#d95f0e",      # burnt orange
+  "Lactobacillales" = "#F8968C",   # bold red
+  "Leptospirales" = "#7570b3",     # strong purple
+  "Methylococcales" = "#80cdc1",   # soft teal
+  "Micrococcales" = "#1f78b4",     # strong blue
+  "Microtrichales" = "#cab2d6",    # light purple
+  "Oceanospirillales" = "#bebada", # pastel purple
+  "Opitutales" = "#fdb462",        # orange
+  "Pedosphaerales" = "#ffffb3",    # pale yellow
+  "Phycisphaerales" = "#b3de69",   # green
+  "Pirellulales" = "#8dd3c7",      # teal
+  "Pseudanabaenales" = "#66c2a5",  # teal
+  "Reyranellales" = "#fccde5",     # pink
+  "Rhizobiales" = "#b2df8a",       # green
+  "Rhodobacterales" = "#fb8072",   # coral pink
+  "SAR11 clade" = "#bc80bd",       # violet
+  "Solibacterales" = "#ccebc5",    # pale green
+  "Solirubrobacterales" = "#fdbf6f",# peach
+  "Sphingobacteriales" = "#ff7f00",# strong orange
+  "Sphingomonadales" = "#b15928",  # brown
+  "Synechococcales" = "#006837",   # forest green
+  "Verrucomicrobiales" = "#ffff33",# bright yellow
+  "Vicinamibacterales" = "#c7e9b4",# pale green
+  "Xanthomonadales" = "#fddbc7"    # light pink
+)
+
+order_levels <- get_taxa_unique(ps_ra_top, "order")
+order_levels <- order_levels[!is.na(order_levels)]
+missing_orders <- setdiff(order_levels, names(order_colors))
+set.seed(42)  # so re-knits give the same colors for the new orders
+new_order_colors <- setNames(distinctColorPalette(length(missing_orders)), missing_orders)
+order_colors <- c(order_colors, new_order_colors)
+
+#order chart with no legend
+o_top_nolegend <- plot_bar(subset_samples(ps_ra_top), x = "Date", fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold", size = 16)) +
+  facet_grid(. ~ Location, scales = "free", space = "free")+
+  scale_fill_manual(values = order_colors) +
+  scale_x_discrete(
+    breaks = dates_to_show,
+    labels = function(x) format(as.Date(x), "%b %Y")
+    #Convert & format as "Jan 2024"
+  ) + 
+  theme(legend.position = "none", axis.title = element_text(size=15), title=element_text(size = 15)) + 
+  theme(axis.text.x = element_text(size = 13, angle = 45, hjust = 1)) +
+  labs(x="Sample Date", y = "Relative Abundance (%)")
+o_top_nolegend
+
+#order legend as its own figure
+o_top_legend_only <- plot_bar(subset_samples(ps_ra_top), x = "Date", fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  scale_fill_manual(values = order_colors) +
+  theme(legend.text = element_text(size=9), legend.title = element_text(size=12), legend.position = "right") +
+  guides(fill = guide_legend(ncol = 4))
+
+order_legend_grob <- cowplot::get_legend(o_top_legend_only)
+o_legend_plot <- cowplot::ggdraw(order_legend_grob)
+o_legend_plot
+
+#family
+#standardized palette 
+family_levels <- get_taxa_unique(ps_ra_top, "family")
+family_levels <- family_levels[!is.na(family_levels)]
+palette_f <- setNames(distinctColorPalette(length(family_levels)), family_levels)
+
+#family chart with no legend
+f_top_nolegend <- plot_bar(subset_samples(ps_ra_top), x = "Date", fill="family")+
+  geom_bar(aes(fill=family), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold", size = 16)) +
+  facet_grid(. ~ Location, scales = "free", space = "free")+
+  scale_fill_manual(values = palette_f) +
+  scale_x_discrete(
+    breaks = dates_to_show,
+    labels = function(x) format(as.Date(x), "%b %Y")  
+    #Convert & format as "Jan 2024"
+  ) + 
+  theme(legend.position = "none", axis.title = element_text(size=15), title=element_text(size = 15)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x="Sample Date", y = "Relative Abundance (%)")
+f_top_nolegend
+
+#family legend as its own figure
+f_top_legend_only <- plot_bar(subset_samples(ps_ra_top), x = "Date", fill="family")+
+  geom_bar(aes(fill=family), stat="identity",position="stack") +
+  scale_fill_manual(values = palette_f) +
+  theme(legend.text = element_text(size=9), legend.title = element_text(size=12), legend.position = "right") +
+  guides(fill = guide_legend(ncol = 4))
+
+family_legend_grob <- cowplot::get_legend(f_top_legend_only)
+f_legend_plot <- cowplot::ggdraw(family_legend_grob)
+f_legend_plot
+ggsave("~/Desktop/16S_figures_full/order_bar_NO_LEGEND.png", plot = o_top_nolegend, width = 14, height = 8, dpi = 300)
+ggsave("~/Desktop/16S_figures_full/order_bar_LEGEND_ONLY.png", plot = o_legend_plot, width = 10, height = 12, dpi = 300)
+ggsave("~/Desktop/16S_figures_full/family_bar_NO_LEGEND.png", plot = f_top_nolegend, width = 14, height = 8, dpi = 300)
+ggsave("~/Desktop/16S_figures_full/family_bar_LEGEND_ONLY.png", plot = f_legend_plot, width = 10, height = 14, dpi = 300)
+```
+
+# summer rel abund plot
+```{r}
+#create summer subset
+summer <- ps_ra_top
+sample_data(summer)$Date_real <- as.Date(as.character(sample_data(summer)$Date))
+#only utilizing samples from summer months (July & August)
+summer <- subset_samples(summer, format(Date_real, "%m") %in% c("07", "08"))
+sample_data(summer)$Date <- droplevels(factor(sample_data(summer)$Date))
+#standardized palette 
+class_levels <- get_taxa_unique(summer, "class")
+class_levels <- class_levels[!is.na(class_levels)]
+palette_c <- setNames(distinctColorPalette(length(class_levels)), class_levels)
+summer_dates <- levels(sample_data(summer)$Date)
+summer_breaks <- summer_dates[seq(1, length(summer_dates), by = 3)]  
+
+# Plot, no legend
+c1_summer_nolegend <- plot_bar(summer, x = "Date", fill="class") + 
+  geom_bar(aes(fill=class), stat="identity", position="stack") + 
+  theme(strip.text=element_text(face="bold", size = 16)) + 
+  facet_grid(. ~ Location, scales = "free", space = "free") + 
+  scale_fill_manual(values = palette_c) + 
+  scale_x_discrete( 
+    breaks = summer_breaks, 
+    labels = function(x) format(as.Date(x), "%b %Y")
+  ) +  
+  theme(legend.position = "none", axis.title = element_text(size=15), title=element_text(size = 25)) +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  labs(x="Sample Date", y = "Relative Abundance (%)")
+c1_summer_nolegend
+
+# Legend as its own figure
+c1_summer_legend_only <- plot_bar(summer, x = "Date", fill="class") + 
+  geom_bar(aes(fill=class), stat="identity", position="stack") + 
+  scale_fill_manual(values = palette_c) +
+  theme(legend.text = element_text(size=9), legend.title = element_text(size=12), legend.position = "right") +
+  guides(fill = guide_legend(ncol = 4))
+
+summer_legend_grob <- cowplot::get_legend(c1_summer_legend_only)
+c1_summer_legend_plot <- cowplot::ggdraw(summer_legend_grob)
+c1_summer_legend_plot
+ggsave("~/Desktop/16S_figures_full/class_summer_NO_LEGEND.png", plot = c1_summer_nolegend, width = 14, height = 8, dpi = 300)
+ggsave("~/Desktop/16S_figures_full/class_summer_LEGEND_ONLY.png", plot = c1_summer_legend_plot, width = 10, height = 12, dpi = 300)
+```
+
+# Log transform
+```{r}
+library(vegan)
+library(phyloseq)
+library(dplyr)
+
+# pull the raw counts matrix directly from the final ps object, not the
+# earlier ASV variable, which got overwritten into a phyloseq otu_table
+# object several chunks ago and is no longer a plain matrix
+otu_raw <- as(otu_table(ps), "matrix")
+# taxa_are_rows = TRUE means rows = ASVs, columns = samples
+
+#For Bray-Curtis, turn data into relative abundances since these data are compositional.
+relabund <- function(sample) { #Write a relative abundance function
+  x = sample/sum(sample)
+  x = x*100
+  return(x)
+}
+
+#pcoa all data bray-curtis, relative abundance
+#MARGIN = 2 applies relabund per SAMPLE (columns), since rows are ASVs here
+otu_df <- apply(otu_raw, 2, relabund)
+dim(otu_df) #see how many ASVs are there
+
+otu_df <- otu_df[rowSums(otu_df) != 0, ] #get rid of ASVs that have no abundance in any samples
+otu_df <- otu_df[rowSums(otu_df > 0) > (0.05 * ncol(otu_df)), ]
+dim(otu_df) #check to see how many ASVs are left
+
+otu_log <- log(otu_df+1) #Log transform the relative abundance data, where I add a 1 pseudocount to everything
+dim(otu_log)
+
+#Helpful reference - http://r-sig-ecology.471788.n2.nabble.com/Variability-explanations-for-the-PCO-axes-as-in-Anderson-and-Willis-2003-td6429547.html
+otu_log2 <- vegdist(t(otu_log), "bray") #calculate bray curtis dissimilarity
+```
+
+# PCoA tries -- they don't work for non-normal data though
+```{r}
+pcoa <- cmdscale(otu_log2, k=(3), eig=TRUE) #metric dimensional scaling (principal coordinates analysis)
+barplot(pcoa$eig) #take a look at what principal coordinates best explain the data. There is a small difference between 2 and 3, so also plot principal coordinates 2 and 3.
+pcoa.eig <- eigenvals(pcoa) #extract eigenvalues
+##show pc explanation fig
+Variance <- pcoa.eig / sum(pcoa.eig) #calculate the percent of variance explained by each axis
+Variance1 <- 100 * signif(Variance[1], 2) #extract percent explained by variance 1
+Variance2 <- 100 * signif(Variance[2], 2) #extract percent explained by variance 2
+Variance3 <- 100 * signif(Variance[3], 3) #extract percent explained by variance 3
+str(pcoa)
+pcoa$points
+
+#GGPLOT2 plotting
+#pull metadata for exactly the samples in pcoa$points, by name, so rows
+#cannot silently get mismatched if ordering ever differs from META
+pcoa_samples <- rownames(pcoa$points)
+meta_for_pcoa <- as(sample_data(ps), "data.frame")[pcoa_samples, , drop = FALSE]
+pcoa2 <- cbind(pcoa$points, meta_for_pcoa) # combine the Pcoa values with metadata for easier plotting
+pcoa2$type <- factor(pcoa2$Date) #adjust the levels so they plot correctly!
+
+#principal coordinates 1 and 3
+pcoa_1_3 <- pcoa2 %>% ggplot(aes(x = pcoa2[,1]*(-1), y = pcoa2[,3], colour = Location, shape = Season)) +
+  geom_point(size = 4, stroke = 2) +
+  #coord_fixed() + #aspect ratio of 1
+  labs(x = paste0("PCoA1 (", Variance1, "%)"), y = paste0("PCoA3 (",Variance3, "%)"), title = "Lake Champlain Samples PCoA of Bray-Curtis Dissimilarity", shape= "Season", colour = "Location")+
+  theme(legend.text.align = 0)
+pcoa_1_3
+
+# principal coordinates 1 and 2
+pcoa_1_2 <- pcoa2 %>% ggplot(aes(x = pcoa2[,1]*(-1), y = pcoa2[,2], colour = Location, shape = Season)) +
+  geom_point(size = 4, stroke = 2) +
+  #coord_fixed() + #aspect ratio of 1
+  labs(x = paste0("PCoA1 (", Variance1, "%)"), y = paste0("PCoA2 (",Variance2, "%)"), title = "Lake Champlain Samples PCoA of Bray-Curtis Dissimilarity", shape= "Season", colour = "Location")+
+  theme(legend.text.align = 0)
+pcoa_1_2
+
+# principal coordinates 2 and 3
+pcoa_2_3 <- pcoa2 %>% ggplot(aes(x = pcoa2[,2]*(-1), y = pcoa2[,3], colour = Location, shape = Season)) +
+  geom_point(size = 4, stroke = 2) +
+  #coord_fixed() + #aspect ratio of 1
+  labs(x = paste0("PCoA2 (", Variance2, "%)"), y = paste0("PCoA3 (",Variance3, "%)"), title = "Lake Champlain Samples PCoA of Bray-Curtis Dissimilarity", shape= "Season", colour = "Location")+
+  theme(legend.text.align = 0)
+pcoa_2_3
+
+dir.create("~/Desktop/16S_figures_full", showWarnings = FALSE)
+
+# eigenvalue barplot needs to be captured differently since it's base R, not ggplot
+png("~/Desktop/16S_figures_full/pcoa_eigenvalues.png", width = 10, height = 6, units = "in", res = 300)
+barplot(pcoa$eig)
+dev.off()
+
+ggsave("~/Desktop/16S_figures_full/pcoa_axis1_axis3.png", plot = pcoa_1_3, width = 10, height = 7, dpi = 300)
+ggsave("~/Desktop/16S_figures_full/pcoa_axis1_axis2.png", plot = pcoa_1_2, width = 10, height = 7, dpi = 300)
+ggsave("~/Desktop/16S_figures_full/pcoa_axis2_axis3.png", plot = pcoa_2_3, width = 10, height = 7, dpi = 300)
+```
+
+
+# Testing Normality
+```{r}
+apply(otu_log, 2, function(x) shapiro.test(x)$p.value)
+library(reshape2)
+asv_melted <- melt(otu_log)
+asv_melted%>%ggplot(aes(sample = value))+
+  geom_qq()+
+  geom_qq_line()
+str(otu_log)
+
+hist(as.vector(otu_log), breaks = 50, main = "Log-Transformed Data", col = "red", xlab = "log(Counts + 1)")
+
+# Shapiro test summary (optional, but useful to have alongside the plots for context)
+shapiro_pvals <- apply(otu_log, 2, function(x) shapiro.test(x)$p.value)
+summary(shapiro_pvals)
+
+# QQ plot, assigned to a variable so it's saveable
+library(reshape2)
+asv_melted <- melt(otu_log)
+qq_plot <- asv_melted %>% ggplot(aes(sample = value)) +
+  geom_qq() +
+  geom_qq_line()
+qq_plot
+
+# Histogram, base R graphics so it needs the png()/dev.off() wrapper
+png("~/Desktop/16S_figures_full/normality_histogram.png", width = 8, height = 6, units = "in", res = 300)
+hist(as.vector(otu_log), breaks = 50, main = "Log-Transformed Data", col = "red", xlab = "log(Counts + 1)")
+dev.off()
+
+# Save the QQ plot
+ggsave("~/Desktop/16S_figures_full/normality_qqplot.png", plot = qq_plot, width = 8, height = 6, dpi = 300)
+```
+
+
+# NDMS without the first 10 samples
+Reference: https://jkzorz.github.io/2019/06/06/NMDS.html#:~:text=NMDS%20plots%20are%20non%2Dmetric,distribution%20with%20a%20long%20tail.
+```{r}
+# Remove first 10 samples (assuming row names are sample IDs)
+otu_log_filtered <- otu_log[!rownames(otu_log) %in% as.character(400:409), ]
+otu_log_filtered <- t(otu_log_filtered)
+
+# Calculate Bray-Curtis dissimilarity
+otu_log2 <- vegdist(otu_log_filtered, "bray")  
+
+# Perform NMDS
+nmds <- metaMDS(otu_log2, k = 3, trymax = 100)  
+
+# Filter metadata to match the reduced otu_log
+META <- t(META)
+META_filtered <- META[, !colnames(META) %in% as.character(400:409)]
+
+# Extract NMDS coordinates
+nmds_points <- as.data.frame(nmds$points)  
+nmds2 <- cbind(nmds_points, t(META_filtered))  
+
+# Ensure type column is correctly assigned
+nmds2$type <- factor(nmds2$Date)  
+
+# PLOT THE NMDS
+# can try with 2 and 3 or 1 and 3 if looks bad
+ggplot(nmds2, aes(x = nmds2[,1], y = nmds2[,2], colour = Location, shape = Season)) +
+  geom_point(size = 4, stroke = 2) +
+  scale_shape_manual(values = c("Spring" = 3,  # Plus
+                                "Summer" = 16,  # Unfilled Circle
+                                "Fall" = 5,    # Unfilled Triangle
+                                "Winter" = 8)) + # Diamond
+  labs(x = "NMDS1", y = "NMDS2",  
+       shape = "Season", colour = "Location") +
+  theme(legend.text.align = 0)
+
+# drawing ellipses based on season
+seasonplot <- ggplot(nmds2, aes(x = nmds2[,1], y = nmds2[,2], colour = Location, shape = Season)) +
+  geom_point(size = 4, stroke = 2) +
+  scale_shape_manual(values = c("Spring" = 3,  # Plus
+                                "Summer" = 16,  # Unfilled Circle
+                                "Fall" = 5,    # Unfilled Triangle
+                                "Winter" = 8)) + # Diamond
+  stat_ellipse(aes(group = Season), linetype = "dashed", size = 1) + 
+  labs(x = "NMDS1", y = "NMDS2",  
+       shape = "Season", colour = "Location") +
+  theme(legend.text.align = 0)
+
+locationplot <- ggplot(nmds2, aes(x = nmds2[,1], y = nmds2[,2], colour = Location, shape = Season)) +
+  geom_point(size = 4, stroke = 2) +
+  scale_shape_manual(values = c("Spring" = 3,  # Plus
+                                "Summer" = 16,  # Unfilled Circle
+                                "Fall" = 5,    # Unfilled Triangle
+                                "Winter" = 8)) + # Diamond
+  stat_ellipse(aes(group = Location), linetype = "dashed", size = 1) + 
+  labs(x = "NMDS1", y = "NMDS2",  
+       shape = "Season", colour = "Location") +
+  theme(legend.text.align = 0)
+
+nmds$stress # record this and put on graph when presenting it
+
+```
+
+# ANOSIM test
+Reference: https://jkzorz.github.io/2019/06/11/ANOSIM-test.html 
+same goal as the PERMANOVA but better for this type of data
+```{r}
+# META_filtered comes in transposed from the NMDS chunk, variables as rows.
+# MUST t() before as.data.frame or $ has no columns to find.
+META_filtered <- as.data.frame(t(META_filtered))
+
+ano <- anosim(otu_log_filtered, META_filtered$Season, distance = "bray", permutations = 9999)
+ano
+
+# for SITE
+# Call:
+# anosim(x = otu_log_filtered, grouping = META_filtered$Location,      permutations = 9999, distance = "bray") 
+# Dissimilarity: bray 
+# 
+# ANOSIM statistic R: 0.1908 --> more similar, closer to 0
+#       Significance: 1e-04 --> significant for site
+# 
+# Permutation: free
+# Number of permutations: 9999
+
+
+# for SEASON
+# Call:
+# anosim(x = otu_log_filtered, grouping = META_filtered$Season,      permutations = 9999, distance = "bray") 
+# Dissimilarity: bray 
+# 
+# ANOSIM statistic R: 0.5549 --> closer to 1 means groups are more dissimilar
+#       Significance: 1e-04 
+# 
+# Permutation: free
+# Number of permutations: 9999
+
+```
+
+# PERMANOVA test
+```{r}
+# Convert phyloseq object to a community matrix
+otu_df <- as.data.frame(otu_table(ps))
+otu_df <- t(otu_df)
+
+dim(otu_df)
+otu_df <- otu_df[rowSums(otu_df) != 0, ] #get rid of ASVs that have no abundance in any samples
+
+otu_df <- t(otu_df) # should be ASVs as rows before this step
+otu_df <- otu_df[rowSums(otu_df > 0) > (0.05 * ncol(otu_df)), ]
+
+dim(otu_df) #check to see how many ASVs are left --> [1] 839  87
+
+otu_log <- log(otu_df+1) #Log transform the relative abundance data, where I add a 1 pseudocount to everything
+dim(otu_log)
+otu_log
+otu_log2 <- vegdist(t(otu_log), "bray") #calculate bray curtis dissimilarity
+
+hist(otu_log2)
+
+metadata <- data.frame(sample_data(ps))
+
+permanova_result <- adonis2(otu_log2 ~ Season, data = metadata, permutations = 999)
+print(permanova_result)
+```
+
+
+# BY SEASON
+```{r}
+
+# adonis2(formula = otu_log2 ~ Season, data = metadata, permutations = 999)
+#           Df SumOfSqs      R2      F Pr(>F)    
+# Season    3   5.0919 0.24905 9.1755  0.001 ***
+# Residual 83  15.3535 0.75095                  
+# Total    86  20.4455 1.00000                  
+# ---
+#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+dispersion_season <- betadisper(otu_log2, metadata$Season)
+anova(dispersion_season)  # If p < 0.05, seasons have significantly different dispersion
+
+# Analysis of Variance Table
+# 
+# Response: Distances
+#            Df  Sum Sq  Mean Sq F value   Pr(>F)   
+# Groups     3 0.35827 0.119424  5.6081 0.001498 **
+# Residuals 83 1.76748 0.021295                    
+# ---
+#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+```
+
+# BY SITE
+```{r}
+permanova_site <- adonis2(otu_log2 ~ Location, data = metadata, permutations = 999)
+print(permanova_site)
+# Permutation test for adonis under reduced model
+# Terms added sequentially (first to last)
+# Permutation: free
+# Number of permutations: 999
+# 
+# adonis2(formula = otu_log2 ~ Location, data = metadata, permutations = 999)
+#           Df SumOfSqs      R2      F Pr(>F)   
+# Location  2   1.3763 0.06732 3.0313  0.003 **
+# Residual 84  19.0692 0.93268                 
+# Total    86  20.4455 1.00000                 
+# ---
+#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+dispersion_site <- betadisper(otu_log2, metadata$Location)
+anova(dispersion_site)  # If p < 0.05, sites have significantly different dispersion
+
+# Analysis of Variance Table
+# 
+# Response: Distances
+# Df  Sum Sq  Mean Sq F value Pr(>F)
+# Groups     2 0.05083 0.025415  0.7487 0.4761
+# Residuals 84 2.85143 0.033946     
+```
+
+# Shannon Diversity
+```{r}
+ps_MS <- subset_samples(ps, Location %in% c("MIS", "STA"))
+meta <- data.frame(sample_data(ps_MS))
+meta$Date <- as.Date(meta$Date, format = "%m/%d/%y")  # <- key line
+sample_data(ps_MS) <- sample_data(meta)
+
+ps_MS_2024 <- subset_samples(ps_MS, year(Date) == 2024)
+
+shannon_df <- estimate_richness(ps_MS, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID") 
+metadata_df <- data.frame(sample_data(ps_MS)) %>%
+  rownames_to_column(var = "SampleID")
+merged_df <- left_join(shannon_df, metadata_df, by = "SampleID")
+
+merged_df$BloomStatus <- factor(merged_df$BloomStatus, levels = c("Pre", "Bloom", "Post"))
+
+p <- ggboxplot(data = merged_df,
+               x = "BloomStatus",
+               color = "Location",
+               y = "Shannon",
+               add = "jitter",      
+               palette = c("green3", "steelblue2"))     
+
+p
+
+p + stat_compare_means(method = "kruskal.test") +
+  stat_compare_means(comparisons = list(c("STA Pre", " STA Bloom"),
+                                        c("STA Bloom", "STA Post"),
+                                        c("STA Pre", "STA Post"),
+                                        c("MIS Pre", " MIS Bloom"),
+                                        c("MIS Bloom", "MIS Post"),
+                                        c("MIS Pre", "MIS Post")),
+                     method = "wilcox.test",
+                     label = "p.signif")
+
+
+# tests for summer vs winter
+
+meta <- data.frame(sample_data(ps_MS))
+meta$Date <- as.Date(meta$Date, format = "%m/%d/%y")  # <- key line
+sample_data(ps_MS) <- sample_data(meta)
+
+shannon_df <- estimate_richness(ps_MS, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID") 
+metadata_df <- data.frame(sample_data(ps_MS)) %>%
+  rownames_to_column(var = "SampleID")
+merged_df <- left_join(shannon_df, metadata_df, by = "SampleID")
+merged_df$Season <- factor(merged_df$Season, levels = c("Winter", "Spring", "Summer", "Fall"))
+
+p <- ggboxplot(data = merged_df,
+               x = "Season",
+               color = "Location",
+               y = "Shannon",
+               add = "jitter",       
+               palette = c("green3", "steelblue2"))     
+p
+
+my_comparisons <- list(c("MIS Summer", "MIS Spring"),
+                       c("MIS Winter", "MIS Summer"),
+                       c("STA Summer", "STA Winter"),
+                       c("STA Summer", "STA Spring"))
+
+p + stat_compare_means(method = "wilcox.test",
+                       comparisons = my_comparisons,
+                       label = "p.signif",
+                       hide.ns = FALSE) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# all seasons richness
+shannon_df <- estimate_richness(ps, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID") 
+metadata_df <- data.frame(sample_data(ps)) %>%
+  rownames_to_column(var = "SampleID")
+merged_df <- left_join(shannon_df, metadata_df, by = "SampleID")
+merged_df$Season <- factor(merged_df$Season, levels = c("Winter", "Spring", "Summer", "Fall"))
+merged_df$Location <- factor(merged_df$Location, levels = c("MIS", "STA", "MAB"))
+
+
+p2 <- ggboxplot(data = merged_df,
+                x = "Season",
+                color = "Location",
+                y = "Shannon",
+                add = "jitter",      
+                palette = c("green3", "steelblue2", "salmon"))     
+p2
+
+
+ps_MIS <- subset_samples(ps, Location == "MIS")
+ps_STA <- subset_samples(ps, Location == "STA")
+ps_MAB <- subset_samples(ps, Location == "MAB")
+
+# bloom MIS
+shannon_df <- estimate_richness(ps_MIS, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID") 
+metadata_df <- data.frame(sample_data(ps_MIS)) %>%
+  rownames_to_column(var = "SampleID")
+merged_df <- left_join(shannon_df, metadata_df, by = "SampleID")
+
+p5 <- ggboxplot(data = merged_df,
+                x = "BloomStatus",
+                color = "green3",
+                y = "Shannon",
+                add = "jitter",   
+)     
+p5
+
+shannon_df <- estimate_richness(ps_MAB, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID") 
+metadata_df <- data.frame(sample_data(ps_MAB)) %>%
+  rownames_to_column(var = "SampleID")
+merged_df <- left_join(shannon_df, metadata_df, by = "SampleID")
+
+p6 <- ggboxplot(data = merged_df,
+                x = "BloomStatus",
+                color = "salmon",
+                y = "Shannon",
+                add = "jitter",      
+)      
+p6
+
+p5 + stat_compare_means(method = "wilcox.test",
+                        comparisons = list(c("Pre", "Bloom"), c("Bloom", "Post"), c("Pre", "Post")),
+                        label = "p.signif",
+                        hide.ns = FALSE) +
+  labs(y = "Shannon Diversity Index") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# bloom STA
+shannon_df <- estimate_richness(ps_STA, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID")
+metadata_df <- data.frame(sample_data(ps_STA)) %>%
+  rownames_to_column(var = "SampleID")
+merged_df <- left_join(shannon_df, metadata_df, by = "SampleID")
+
+p6 <- ggboxplot(data = merged_df,
+                x = "BloomStatus",
+                color = "steelblue2",
+                y = "Shannon",
+                add = "jitter",        
+)     
+p6
+
+p6 + stat_compare_means(method = "wilcox.test",
+                        comparisons = list(c("Pre", "Bloom"), c("Bloom", "Post"), c("Pre", "Post")),
+                        label = "p.signif",
+                        hide.ns = FALSE) +
+  labs(y = "Shannon Diversity Index") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+# MIS seasonal richness
+shannon_df <- estimate_richness(ps_MIS, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID") 
+metadata_df <- data.frame(sample_data(ps_MIS)) %>%
+  rownames_to_column(var = "SampleID")
+merged_df <- left_join(shannon_df, metadata_df, by = "SampleID")
+merged_df$Season <- factor(merged_df$Season, levels = c("Winter", "Spring", "Summer", "Fall"))
+
+p4 <- ggboxplot(data = merged_df,
+                x = "Season",
+                color = "green3",
+                y = "Shannon",
+                add = "jitter",        
+)    
+p4
+
+shannon_df <- estimate_richness(ps_MAB, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID") 
+metadata_df <- data.frame(sample_data(ps_MAB)) %>%
+  rownames_to_column(var = "SampleID")
+merged_df <- left_join(shannon_df, metadata_df, by = "SampleID")
+merged_df$Season <- factor(merged_df$Season, levels = c("Winter", "Spring", "Summer", "Fall"))
+
+p7 <- ggboxplot(data = merged_df,
+                x = "Season",
+                color = "salmon",
+                y = "Shannon",
+                add = "jitter",      
+)    
+p7 + labs(y = "Shannon Diversity Index") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+p7 + stat_compare_means(method = "wilcox.test",
+                        comparisons = my_comparisons,
+                        label = "p.signif",
+                        hide.ns = FALSE) +
+  labs(y = "Shannon Diversity Index") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+# STA seasonal richness
+shannon_df <- estimate_richness(ps_STA, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID") 
+metadata_df <- data.frame(sample_data(ps_STA)) %>%
+  rownames_to_column(var = "SampleID")
+merged_df <- left_join(shannon_df, metadata_df, by = "SampleID")
+merged_df$Season <- factor(merged_df$Season, levels = c("Winter", "Spring", "Summer", "Fall"))
+
+p2 <- ggboxplot(data = merged_df,
+                x = "Season",
+                color = "steelblue2",
+                y = "Shannon",
+                add = "jitter",     
+)    
+p2
+
+my_comparisons <- list(c("Summer", "Spring"),
+                       c("Winter", "Summer"),
+                       c("Fall", "Summer"),
+                       c("Fall", "Spring"),
+                       c("Fall", "Winter"))
+
+p2 + stat_compare_means(method = "wilcox.test",
+                        comparisons = my_comparisons,
+                        label = "p.signif",
+                        hide.ns = FALSE) +
+  labs(y = "Shannon Diversity Index") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+# Rebuild with full 251 samples (includes recovered E400-409 winter batch)
+base251 <- "/Users/alexchrostowski/Desktop/16S_18S_merged_data_full/16S_251"
+ASV  <- read.table(file.path(base251, "ASVs_counts_ALL.csv"), sep=",", header=TRUE, row.names=1, check.names=FALSE)
+taxa <- as.matrix(read.table(file.path(base251, "ASVs_taxonomy_ALL.csv"), sep=",", header=TRUE, row.names=1))
+meta <- read.table(file.path(base251, "metadata_E400to672.csv"), sep=",", header=TRUE, row.names=1, check.names=FALSE)
+
+meta <- meta[, colnames(meta) != "" & !is.na(colnames(meta))]
+stopifnot(all(colnames(ASV) %in% rownames(meta)))
+meta <- meta[colnames(ASV), , drop=FALSE]
+
+ASV  <- otu_table(as.matrix(ASV), taxa_are_rows = TRUE)
+TAX  <- tax_table(taxa)
+META <- sample_data(meta)
+
+ps251 <- phyloseq(ASV, TAX, META)
+ps251
+```
+# Corncob prep on the 251-sample dataset
+```{r}
+# Corncob setup: filter to a reasonably prevalent/abundant subset of ps251.
+# Running differentialTest on all 31710 raw ASVs is both statistically weak
+# (most are near zero) and very slow. Same logic as ps_ra_top, built fresh
+# here so it does not depend on any earlier chunk's ps_ra/ps_ra_top state.
+ps251_ra <- transform_sample_counts(ps251, function(x) x / sum(x))
+ps251_filt <- filter_taxa(ps251_ra, function(x) sum(x) > .005, TRUE)
+ps251_filt
+
+# corncob wants raw counts, not relative abundance, it models counts directly
+# with its own internal normalization. pull the matching raw-count taxa back
+# out of ps251 using the ASV names that survived the filter above.
+keep_taxa <- taxa_names(ps251_filt)
+ps251_corncob <- prune_taxa(keep_taxa, ps251)
+ps251_corncob
+```
+
+# 251 SAMPLE REBUILD (includes E400-409)
+Rebuilding everything below against the full 251 sample dataset. E400-409
+was found and processed after the original 241 sample analysis above, this
+section replaces those results with the complete series. Uses _251 suffixed
+variable names throughout so nothing here collides with the 241 sample
+objects above.
+
+```{r}
+base251 <- "/Users/alexchrostowski/Desktop/16S_18S_merged_data_full/16S_251"
+ASV  <- read.table(file.path(base251, "ASVs_counts_ALL.csv"), sep=",", header=TRUE, row.names=1, check.names=FALSE)
+taxa <- as.matrix(read.table(file.path(base251, "ASVs_taxonomy_ALL.csv"), sep=",", header=TRUE, row.names=1))
+meta <- read.table(file.path(base251, "metadata_E400to672.csv"), sep=",", header=TRUE, row.names=1, check.names=FALSE)
+
+meta <- meta[, colnames(meta) != "" & !is.na(colnames(meta))]
+stopifnot(all(colnames(ASV) %in% rownames(meta)))
+meta <- meta[colnames(ASV), , drop=FALSE]
+
+ASV  <- otu_table(as.matrix(ASV), taxa_are_rows = TRUE)
+TAX  <- tax_table(taxa)
+META <- sample_data(meta)
+
+ps251 <- phyloseq(ASV, TAX, META)
+ps251
+```
+
+```{r}
+ps251_ra <- transform_sample_counts(ps251, function(OTU) OTU/sum(OTU))
+sample_data(ps251_ra)$Location <- factor(sample_data(ps251_ra)$Location, levels=c("MIS","STA","MAB"))
+ps251_ra_top <- filter_taxa(ps251_ra, function(x) sum(x) > .005, TRUE)
+ps251_ra_top
+```
+
+```{r}
+sorted_dates_251 <- format(as.Date(sample_data(ps251_ra_top)$Date, format = "%m/%d/%y"), "%Y-%m-%d")
+sample_data(ps251_ra_top)$Date <- factor(sorted_dates_251, levels = sort(unique(sorted_dates_251)))
+all_dates_251 <- as.Date(levels(sample_data(ps251_ra_top)$Date))
+keep_251 <- !duplicated(format(all_dates_251, "%Y-%m"))
+month_firsts_251 <- all_dates_251[keep_251]
+dates_to_show_251 <- format(month_firsts_251[seq(1, length(month_firsts_251), by = 3)], "%Y-%m-%d")
+dates_to_show_251
+```
+
+```{r}
+ps251_phylum <- ps251_ra_top
+
+phyla_colors_251 <- c(
+  "Acidobacteriota"   = "#8da0cb",
+  "Actinobacteriota"  = "darkolivegreen3",
+  "Armatimonadota"    = "#ffe066",
+  "Bacteroidota"      = "slategray1",
+  "Bdellovibrionota"  = "#c48f65",
+  "Chloroflexi"       = "#7fb2b2",
+  "Cyanobacteria"     = "#228B22",
+  "Deinococcota"      = "#e6a4b4",
+  "Desulfobacterota"  = "#a4c2a5",
+  "Firmicutes"        = "#f9c785",
+  "Fusobacteriota"    = "#f4a582",
+  "Gemmatimonadota"   = "#e8b2d2",
+  "Planctomycetota"   = "#ddadf2",
+  "Proteobacteria"    = "#998fc7",
+  "Spirochaetota"     = "#c1e1c1",
+  "Verrucomicrobiota" = "#fff6a3"
+)
+
+setdiff(get_taxa_unique(ps251_ra_top, "phylum"), names(phyla_colors_251))
+
+p1_top_251 <- plot_bar(ps251_ra_top, x = "Date", fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold", size = 16), legend.text = element_text(size=16)) +
+  facet_grid(. ~ Location, scales = "free", space = "free")+
+  scale_fill_manual(values = phyla_colors_251) +
+  scale_x_discrete(
+    breaks = dates_to_show_251,
+    labels = function(x) format(as.Date(x), "%b %Y")
+  ) + 
+  theme(legend.position = "bottom", axis.title = element_text(size=15), title=element_text(size = 25), legend.title = element_text(size = 15)) + 
+  theme(axis.text.x = element_text(size = 13, angle = 45, hjust = 1)) +
+  labs(x="Sample Date", y = "Relative Abundance (%)")
+p1_top_251
+ggsave("~/Desktop/16S_figures_full/phylum_bar_251.png", plot = p1_top_251, width = 14, height = 8, dpi = 300)
+
+```
+
+
+```{r}
+sig_MIS_001_top <- sig_MIS_001 %>% arrange(desc(abs(estimate))) %>% head(20)
+sig_STA_001_top <- sig_STA_001 %>% arrange(desc(abs(estimate))) %>% head(20)
+
+sig_MIS_001_top$asvgenus <- factor(sig_MIS_001_top$asvgenus, levels = rev(sig_MIS_001_top$asvgenus[order(sig_MIS_001_top$estimate)]))
+sig_STA_001_top$asvgenus <- factor(sig_STA_001_top$asvgenus, levels = rev(sig_STA_001_top$asvgenus[order(sig_STA_001_top$estimate)]))
+
+palette_001 <- distinctColorPalette(length(unique(c(as.character(sig_MIS_001_top$family), as.character(sig_STA_001_top$family)))))
+
+sig_MIS_001_plot <- ggplot(sig_MIS_001_top, aes(x = asvgenus, y = estimate, fill = family)) +
+  geom_errorbar(aes(ymin = estimate - std_error, ymax = estimate + std_error), color = "black", width = .3) +
+  geom_point(size = 4, pch = 21) +
+  scale_fill_manual(values = palette_001) +
+  coord_flip() +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Differential Taxa", y = "Coefficient (vs Malletts Bay)", title = "Missisquoi") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "darkgray")
+sig_MIS_001_plot
+
+sig_STA_001_plot <- ggplot(sig_STA_001_top, aes(x = asvgenus, y = estimate, fill = family)) +
+  geom_errorbar(aes(ymin = estimate - std_error, ymax = estimate + std_error), color = "black", width = .3) +
+  geom_point(size = 4, pch = 21) +
+  scale_fill_manual(values = palette_001) +
+  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "none", plot.title = element_text(hjust = 0.5)) +
+  labs(x = " ", y = "Coefficient (vs Malletts Bay)", title = "St Albans") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "darkgray")
+sig_STA_001_plot
+```
+
+
+```{r}
+seqtab_check <- readRDS("dada2_out_paired/seqtab_nochim_ALL.rds")
+tax_check <- readRDS("dada2_out_paired/taxid_ALL.rds")
+check_asvs <- c("ASV_564","ASV_688","ASV_755","ASV_270","ASV_1303")
+asv_to_seq <- setNames(rownames(tax_check), paste0("ASV_", seq_len(nrow(tax_check))))
+nchar(asv_to_seq[check_asvs])
+```
+

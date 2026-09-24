@@ -22,7 +22,7 @@ steps 1 to 4 run on ada, 5 and 6 run in RStudio on your laptop.
 
 ## 5. figures and stats, the post processing rmds
 
-download the output csvs from ada, then open `16S/16SpostProcessing-ALEX.Rmd` or `18S/18SPostProcessing.Rmd` in RStudio and point them at the csvs. they
+download the output csvs from ada, then open `16S/16SpostProcessingFORALLDATA-Alex.Rmd` or `18S/18SPostProcessing.Rmd` in RStudio and point them at the csvs. they
 1. load the counts, taxonomy, and metadata into phyloseq
 2. keep taxa that make up more than 0.5% of the total
 3. make stacked bar charts of who is there over time at each site, at phylum, class, order, and family level. if the legend gets too big it saves as its own image
