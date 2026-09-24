@@ -1,0 +1,543 @@
+---
+title: "18SPostProcessing"
+author: "Alexander Evan Chrostowski"
+date: "2026-06-15"
+output: html_document
+---
+# Loading packages
+```{r}
+library(ggplot2); packageVersion("ggplot2")
+theme_set(theme_bw())
+library(dplyr); packageVersion("dplyr")
+library(tidyverse); packageVersion("tidyverse")
+#For ordinations and other microbial community analyses
+library(phyloseq); packageVersion("phyloseq")
+library(vegan); packageVersion("vegan")
+library(reshape2); packageVersion("reshape2")
+library(randomcoloR); packageVersion("randomcoloR")
+library(ggpubr); packageVersion("ggpubr")
+library(RColorBrewer)   # for brewer.pal()
+library(lubridate)      # for mdy(), year()
+```
+#Prep of saving results to individual folders for training set comparisons 
+```{r}
+#TRAINING_SET toggle removed. SILVA_138.2 never worked, it classified nothing
+#because LearnTaxa had no rank labels to learn from. DECIPHER is the only
+#real option now so this isnt a choice anymore.
+out_base <- "/Users/alexchrostowski/Desktop/ALEX - Eggleston Lab /18S_outputs/DECIPHER_18S_213samples"
+dir_fig  <- file.path(out_base, "figures")
+dir_tab  <- file.path(out_base, "tables")
+dir_stat <- file.path(out_base, "stats")
+for (d in c(dir_fig, dir_tab, dir_stat)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+cat("exporting to:", out_base, "\n")
+```
+
+
+# Setting all the tables/initial variables
+```{r}
+#ps18S already built and confirmed earlier today, 15435 taxa, 213 samples,
+#E417 to 672. same euro number matching and taxonomy alignment this chunk
+#used to do, already done. no rebuild needed, just point everything
+#downstream at it.
+ps <- ps18S
+ps
+sum(is.na(tax_table(ps)[,"class"]))
+```
+
+# Writing and saving the tables you need for other processing
+```{r}
+write.table(as(otu_table(ps), "matrix"), file.path(dir_tab, "ASVsF_18S.csv"), sep=",", col.names=NA)
+write.table(as(tax_table(ps), "matrix"), file.path(dir_tab, "taxaF_18S.csv"), sep=",", col.names=NA)
+write.table(as(sample_data(ps), "matrix"), file.path(dir_tab, "metadata_18S.csv"), sep=",", col.names=NA)
+saveRDS(ps, file.path(out_base, "ps_18S.rds"))
+
+# class-frequency table (what's in the bar plots)
+class_freq <- as.data.frame(sort(table(tax_table(ps)[, "class"], useNA = "ifany"), decreasing = TRUE))
+colnames(class_freq) <- c("class", "n_ASVs")
+write.csv(class_freq, file.path(dir_tab, "class_frequency.csv"), row.names = FALSE)
+```
+
+# Check which eukaryote groups were recovered
+```{r}
+#[UPDATED] the eukaryote ranks here are domain, kingdom, phylum, class, order,
+#family, genus. no division or supergroup, that was the old broken taxonomy's
+#comment left over from before. confirmed columns below, then see what class
+#level groups actually showed up.
+colnames(tax_table(ps))
+sort(table(tax_table(ps)[, "class"], useNA = "ifany"), decreasing = TRUE)
+```
+
+# Processing for relative abundance
+```{r}
+ps_ra <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
+sample_data(ps_ra)$Location <- factor(sample_data(ps_ra)$Location, levels=c("MIS","STA","MAB"))
+ps_ra_top <- filter_taxa(ps_ra, function(x) sum(x) > .005, TRUE)
+ps_ra_top
+sorted_dates <- format(as.Date(sample_data(ps_ra_top)$Date, format = "%m/%d/%y"), "%Y-%m-%d")
+sample_data(ps_ra_top)$Date <- factor(sorted_dates, levels = sort(unique(sorted_dates)))
+all_dates <- as.Date(levels(sample_data(ps_ra_top)$Date))
+keep  <- !duplicated(format(all_dates, "%Y-%m"))
+month_firsts <- all_dates[keep]
+dates_to_show <- format(month_firsts[seq(1, length(month_firsts), by = 3)], "%Y-%m-%d")
+dates_to_show
+```
+
+```{r}
+# each site was sampled on slightly different calendar days, so one shared
+# set of quarterly ticks doesn't land inside every panel's actual date range.
+# build breaks per site instead so each panel's earliest real date gets a label.
+dates_by_site <- sample_data(ps_ra_top) %>%
+  as.data.frame() %>%
+  group_by(Location) %>%
+  distinct(Date) %>%
+  mutate(Date = as.Date(Date)) %>%
+  arrange(Date) %>%
+  filter(!duplicated(format(Date, "%Y-%m"))) %>%
+  slice(seq(1, n(), by = 3)) %>%
+  pull(Date) %>%
+  format("%Y-%m-%d")
+
+dates_by_site
+```
+
+
+# Phylum CHART
+```{r}
+#[UPDATED] "division" never existed in this taxonomy, that comment was
+#leftover from the broken SILVA scheme. phylum is the real rank one step up
+#from class here. same data driven palette pattern as before, generated
+#fresh so it covers whatever phyla actually showed up in the 213 samples.
+
+#each site was sampled on slightly different calendar days, so one shared
+#set of date breaks does not line up with every panel. every 6th month
+#instead of every 3rd, so labels have room to not overlap.
+dates_by_site <- sample_data(ps_ra_top) %>%
+  as.data.frame() %>%
+  group_by(Location) %>%
+  distinct(Date) %>%
+  mutate(Date = as.Date(Date)) %>%
+  arrange(Date) %>%
+  filter(!duplicated(format(Date, "%Y-%m"))) %>%
+  slice(seq(1, n(), by = 6)) %>%
+  pull(Date) %>%
+  format("%Y-%m-%d")
+dates_by_site
+
+phylum_levels <- get_taxa_unique(ps_ra_top, "phylum")
+phylum_levels <- phylum_levels[!is.na(phylum_levels)]
+palette_p <- setNames(distinctColorPalette(length(phylum_levels)), phylum_levels)
+
+p1_top <- plot_bar(ps_ra_top, x = "Date", fill="phylum")+
+  geom_bar(aes(fill=phylum), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold", size = 16), legend.text = element_text(size=12)) +
+  facet_grid(. ~ Location, scales = "free", space = "free")+
+  scale_fill_manual(values = palette_p, na.value = "grey80") +
+  scale_x_discrete(
+    breaks = dates_by_site,
+    labels = function(x) format(as.Date(x), "%b %Y")
+  ) +
+  theme(legend.position = "bottom", axis.title = element_text(size=15), title=element_text(size = 25), legend.title = element_text(size = 15)) +
+  theme(axis.text.x = element_text(size = 11, angle = 45, hjust = 1)) +
+  labs(x="Sample Date", y = "Relative Abundance (%)")
+p1_top
+ggsave(file.path(dir_fig, "phylum_bar_213samples.png"), plot = p1_top, width = 26, height = 8, dpi = 300)
+```
+
+# CLASS PLOT
+```{r}
+# [CHANGED vs 16S] data-driven palette over the classes actually present
+# [matches 16S philosophy: hand-curated, hue-grouped, soft tones -- NOT random.
+#  related lineages share a hue family. unlisted (rare) classes -> grey80,
+#  same as the 16S curated-palette approach.]
+euk_class_colors <- c(
+  "Chlorophyceae"        = "#4DAF4A",
+  "Trebouxiophyceae"     = "#A6D854",
+  "Ulvophyceae"          = "#B2DF8A",
+  "Mamiellophyceae"      = "#C7E9B4",
+  "Chlorodendrophyceae"  = "#D9F0A3",
+  "Coleochaetophyceae"   = "#8FD175",
+  "Nephroselmidophyceae" = "#6FBF5C",
+  "Pedinophyceae"        = "#98D98E",
+  "Embryophyta"          = "#3F9142",
+  "Chrysophyceae"        = "#E6AB02",
+  "Bacillariophyceae"    = "#D9A441",
+  "Mediophyceae"         = "#F6C85F",
+  "Eustigmatophyceae"    = "#FBE08A",
+  "Pelagophyceae"        = "#C9962C",
+  "Dinophyceae"          = "#FC8D62",
+  "Intramacronucleata"   = "#377EB8",
+  "Postciliodesmatophora"= "#80B1D3",
+  "Thecofilosea"         = "#984EA3",
+  "Glissomonadida"       = "#BC80BD",
+  "Imbricatea"           = "#CAB2D6",
+  "Perkinsea"            = "#9E6FB0",
+  "Cercomonadidae"       = "#B285C7",
+  "Phytomyxea"           = "#7D4E96",
+  "Vampyrellidae"        = "#A672B8",
+  "Chytridiomycetes"     = "#A6761D",
+  "Leotiomycetes"        = "#C49A6C",
+  "Dothideomycetes"      = "#DACDA0",
+  "Sordariomycetes"      = "#8C6432",
+  "Eurotiomycetes"       = "#B08248",
+  "Entomophthoromycetes" = "#D4B896",
+  "Neocallimastigomycetes" = "#946A24",
+  "Monogononta"          = "#F4A6C0",
+  "Choanoflagellida"     = "#E5C494",
+  "Bivalvia"             = "#8DD3C7",
+  "Gastropoda"           = "#F2B8D0",
+  "Clitellata"           = "#E8909E",
+  "Rhabditophora"        = "#F7C9D9",
+  "Hydrozoa"             = "#D97590",
+  "Demospongiae"         = "#EAA6B8",
+  "Phylactolaemata"      = "#F0BFCB",
+  "Maxillopoda"          = "#C4909A",
+  "Ostracoda"            = "#DFA8B4",
+  "Chromadorea"          = "#B87E8A",
+  "Actinopterygii"       = "#E88A9E",
+  "Mammalia"             = "#D66F84",
+  "Aves"                 = "#E0879C",
+  "Conoidasida"          = "#5FBFAF",
+  "Aconoidasida"         = "#7FC9BC",
+  "Ichthyosporea"        = "#B0A8C0",
+  "Filasterea"           = "#9F97B3",
+  "Incertae Sedis"       = "#A8A0B5",
+  "Novel Clade 10"       = "#C4BDD0",
+  "Novel Clade 2"        = "#B5AEC5",
+  "Novel Clade Gran-4"   = "#A69FBB",
+  "Other organisms"      = "grey80"
+)
+
+length(euk_class_colors)
+setdiff(get_taxa_unique(ps_ra_top, "class"), c(names(euk_class_colors), NA))
+
+c1_top_nolegend <- plot_bar(ps_ra_top, x = "Date", fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold", size = 16)) +
+  facet_grid(. ~ Location, scales = "free", space = "free")+
+  scale_fill_manual(values = euk_class_colors, na.value = "grey80") +
+  scale_x_discrete(
+    breaks = dates_by_site,
+    labels = function(x) format(as.Date(x), "%b %Y")
+  ) +
+  theme(legend.position = "none", axis.title = element_text(size=15), title=element_text(size = 25)) +
+  theme(axis.text.x = element_text(size = 11, angle = 45, hjust = 1)) +
+  labs(x="Sample Date", y = "Relative Abundance (%)")
+c1_top_nolegend
+ggsave(file.path(dir_fig, "class_bar_213samples_NO_LEGEND.png"), plot = c1_top_nolegend, width = 26, height = 10, dpi = 300)
+
+c1_legend_only <- plot_bar(ps_ra_top, x = "Date", fill="class")+
+  geom_bar(aes(fill=class), stat="identity",position="stack") +
+  scale_fill_manual(values = euk_class_colors, na.value = "grey80") +
+  theme(legend.text = element_text(size=9), legend.title = element_text(size=12), legend.position = "right") +
+  guides(fill = guide_legend(ncol = 4, title = "Class"))
+
+class_legend_grob <- cowplot::get_legend(c1_legend_only)
+class_legend_plot <- cowplot::ggdraw(class_legend_grob)
+class_legend_plot
+ggsave(file.path(dir_fig, "class_bar_213samples_LEGEND_ONLY.png"), plot = class_legend_plot, width = 10, height = 14, dpi = 300)
+```
+
+# Order and family plots
+```{r}
+ps_ra_order <- subset_taxa(ps_ra_top, !is.na(order))
+order_levels <- get_taxa_unique(ps_ra_order, "order")
+order_levels <- order_levels[!is.na(order_levels)]
+palette_o <- setNames(distinctColorPalette(length(order_levels)), order_levels)
+length(order_levels)
+
+o_top_nolegend <- plot_bar(ps_ra_order, x = "Date", fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  theme(strip.text=element_text(face="bold", size = 16)) +
+  facet_grid(. ~ Location, scales = "free", space = "free")+
+  scale_fill_manual(values = palette_o, na.value = "grey80") +
+  scale_x_discrete(
+    breaks = dates_by_site,
+    labels = function(x) format(as.Date(x), "%b %Y")
+  ) +
+  theme(legend.position = "none", axis.title = element_text(size=15), title=element_text(size = 15)) +
+  theme(axis.text.x = element_text(size = 11, angle = 45, hjust = 1)) +
+  labs(x="Sample Date", y = "Relative Abundance (%)")
+o_top_nolegend
+ggsave(file.path(dir_fig, "order_bar_213samples_NO_LEGEND.png"), plot = o_top_nolegend, width = 26, height = 8, dpi = 300)
+
+o_legend_only <- plot_bar(ps_ra_order, x = "Date", fill="order")+
+  geom_bar(aes(fill=order), stat="identity",position="stack") +
+  scale_fill_manual(values = palette_o, na.value = "grey80") +
+  theme(legend.text = element_text(size=9), legend.title = element_text(size=12), legend.position = "right") +
+  guides(fill = guide_legend(ncol = 4, title = "Order"))
+
+order_legend_grob <- cowplot::get_legend(o_legend_only)
+order_legend_plot <- cowplot::ggdraw(order_legend_grob)
+order_legend_plot
+ggsave(file.path(dir_fig, "order_bar_213samples_LEGEND_ONLY.png"), plot = order_legend_plot, width = 10, height = 14, dpi = 300)
+```
+
+# summer rel abund plot
+```{r}
+#same fix as the earlier class chunk, this pointed at ps_ra_plot which
+#does not exist, should be ps_ra_top
+summer <- ps_ra_top
+sample_data(summer)$Date_real <- as.Date(as.character(sample_data(summer)$Date))
+
+#only utilizing samples from summer months, july and august
+keep_samples <- sample_names(summer)[format(sample_data(summer)$Date_real, "%m") %in% c("07","08")]
+summer <- prune_samples(keep_samples, summer)
+sample_data(summer)$Date <- droplevels(factor(sample_data(summer)$Date))
+
+class_levels_summer <- get_taxa_unique(summer, "class")
+class_levels_summer <- class_levels_summer[!is.na(class_levels_summer)]
+length(class_levels_summer)
+
+summer_dates <- levels(sample_data(summer)$Date)
+summer_breaks <- summer_dates[seq(1, length(summer_dates), by = 3)]
+
+#same legend problem as the full year class chart, 55 classes does not fit
+#in one legend cleanly. same no legend plus separate legend split.
+c1_summer_nolegend <- plot_bar(summer, x = "Date", fill="class") +
+  geom_bar(aes(fill=class), stat="identity", position="stack") +
+  theme(strip.text=element_text(face="bold", size = 16)) +
+  facet_grid(. ~ Location, scales = "free", space = "free") +
+  scale_fill_manual(values = euk_class_colors, na.value = "grey80") +
+  scale_x_discrete(
+    breaks = summer_breaks,
+    labels = function(x) format(as.Date(x), "%b %Y")
+  ) +
+  theme(legend.position = "none", axis.title = element_text(size=15), title=element_text(size = 25)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x="Sample Date", y = "Relative Abundance (%)")
+c1_summer_nolegend
+ggsave(file.path(dir_fig, "class_summer_213samples_NO_LEGEND.png"), plot = c1_summer_nolegend, width = 20, height = 8, dpi = 300)
+
+#reusing euk_class_colors, the full year palette, so a given class is the
+#same color in both the full year and summer only charts
+c1_summer_legend_only <- plot_bar(summer, x = "Date", fill="class") +
+  geom_bar(aes(fill=class), stat="identity", position="stack") +
+  scale_fill_manual(values = euk_class_colors, na.value = "grey80") +
+  theme(legend.text = element_text(size=9), legend.title = element_text(size=12), legend.position = "right") +
+  guides(fill = guide_legend(ncol = 4, title = "Class"))
+
+summer_legend_grob <- cowplot::get_legend(c1_summer_legend_only)
+summer_legend_plot <- cowplot::ggdraw(summer_legend_grob)
+summer_legend_plot
+ggsave(file.path(dir_fig, "class_summer_213samples_LEGEND_ONLY.png"), plot = summer_legend_plot, width = 10, height = 12, dpi = 300)
+```
+
+# Log transform
+```{r}
+#[UPDATED] ASV_mat only existed in the original load chunk, which got
+#replaced with ps <- ps18S earlier. pull raw counts straight from ps instead.
+otu_raw <- as(otu_table(ps), "matrix")
+#taxa_are_rows = TRUE for this object, so rows are ASVs, columns are samples
+
+relabund <- function(sample) {
+  x = sample/sum(sample)
+  x = x*100
+  return(x)
+}
+
+#apply column wise since samples are columns here
+otu_df <- apply(otu_raw, 2, relabund)
+dim(otu_df)
+
+otu_df <- otu_df[rowSums(otu_df) != 0, ]
+otu_df <- otu_df[rowSums(otu_df > 0) > (0.05 * ncol(otu_df)), ]
+dim(otu_df)
+
+otu_log <- log(otu_df+1)
+dim(otu_log)
+
+otu_log2 <- vegdist(t(otu_log), "bray")
+```
+
+# Testing Normality
+```{r}
+library(reshape2)
+asv_melted <- melt(otu_log)
+
+qq_plot_18S <- asv_melted %>% ggplot(aes(sample = value)) +
+  geom_qq() +
+  geom_qq_line()
+qq_plot_18S
+ggsave(file.path(dir_fig, "normality_qqplot_213samples.png"), plot = qq_plot_18S, width = 8, height = 6, dpi = 300)
+
+#hist is base R graphics not ggplot, needs the png/dev.off wrapper instead
+#of ggsave
+png(file.path(dir_fig, "normality_histogram_213samples.png"), width = 8, height = 6, units = "in", res = 300)
+hist(as.vector(otu_log), breaks = 50, main = "Log-Transformed Data", col = "red", xlab = "log(Counts + 1)")
+dev.off()
+```
+
+# NMDS
+Reference: https://jkzorz.github.io/2019/06/06/NMDS.html
+```{r}
+set.seed(123)
+otu_log_t <- t(otu_log)
+bray <- vegdist(otu_log_t, "bray")
+nmds <- metaMDS(bray, k = 3, trymax = 100)
+nmds$stress
+
+#[UPDATED] meta only existed in the original load chunk, replaced by ps18S.
+#pull metadata for exactly the samples in the NMDS result, by name, so rows
+#cannot get silently mismatched.
+nmds_points <- as.data.frame(nmds$points)
+nmds_samples <- rownames(nmds_points)
+meta_for_nmds <- as(sample_data(ps), "data.frame")[nmds_samples, , drop = FALSE]
+nmds2 <- cbind(nmds_points, meta_for_nmds)
+nmds2$type <- factor(nmds2$Date)
+
+nmds_base_plot <- ggplot(nmds2, aes(x = nmds2[,1], y = nmds2[,2], colour = Location, shape = Season)) +
+  geom_point(size = 4, stroke = 2) +
+  scale_shape_manual(values = c("Spring" = 3, "Summer" = 16, "Fall" = 5, "Winter" = 8)) +
+  labs(x = "NMDS1", y = "NMDS2", shape = "Season", colour = "Location") +
+  theme(legend.text.align = 0)
+nmds_base_plot
+
+seasonplot <- ggplot(nmds2, aes(x = nmds2[,1], y = nmds2[,2], colour = Location, shape = Season)) +
+  geom_point(size = 4, stroke = 2) +
+  scale_shape_manual(values = c("Spring" = 3, "Summer" = 16, "Fall" = 5, "Winter" = 8)) +
+  stat_ellipse(aes(group = Season), linetype = "dashed", size = 1) +
+  labs(x = "NMDS1", y = "NMDS2", shape = "Season", colour = "Location") +
+  theme(legend.text.align = 0)
+seasonplot
+
+locationplot <- ggplot(nmds2, aes(x = nmds2[,1], y = nmds2[,2], colour = Location, shape = Season)) +
+  geom_point(size = 4, stroke = 2) +
+  scale_shape_manual(values = c("Spring" = 3, "Summer" = 16, "Fall" = 5, "Winter" = 8)) +
+  stat_ellipse(aes(group = Location), linetype = "dashed", size = 1) +
+  labs(x = "NMDS1", y = "NMDS2", shape = "Season", colour = "Location") +
+  theme(legend.text.align = 0)
+locationplot
+```
+
+# ANOSIM test
+Reference: https://jkzorz.github.io/2019/06/11/ANOSIM-test.html
+```{r}
+#[UPDATED] meta only existed in the original load chunk, replaced by ps18S.
+#pull metadata for exactly the samples in otu_log_t, by name.
+md <- as(sample_data(ps), "data.frame")[rownames(otu_log_t), , drop = FALSE]
+
+ano_season <- anosim(otu_log_t, md$Season, distance = "bray", permutations = 9999)
+ano_season
+
+ano_site <- anosim(otu_log_t, md$Location, distance = "bray", permutations = 9999)
+ano_site
+```
+
+# PERMANOVA test
+```{r}
+#[UPDATED] meta only existed in the original load chunk, replaced by ps18S.
+metadata <- as(sample_data(ps), "data.frame")[rownames(otu_log_t), , drop = FALSE]
+
+permanova_season <- adonis2(otu_log2 ~ Season, data = metadata, permutations = 999)
+print(permanova_season)
+```
+
+# BY SEASON
+```{r}
+dispersion_season <- betadisper(otu_log2, metadata$Season)
+disp_season_aov <- anova(dispersion_season)
+disp_season_aov
+```
+
+# BY SITE
+```{r}
+permanova_site <- adonis2(otu_log2 ~ Location, data = metadata, permutations = 999)
+print(permanova_site)
+
+dispersion_site <- betadisper(otu_log2, metadata$Location)
+disp_site_aov <- anova(dispersion_site)      
+disp_site_aov  # If p < 0.05, sites have significantly different dispersion
+
+# NOTE: temporal non-independence (repeated measures) is NOT yet handled --
+# same field-wide gap Erin flagged. Restricted-permutation approach to follow.
+```
+
+# Shannon Diversity (by Season -- runs now)
+```{r}
+# all seasons richness
+shannon_df <- estimate_richness(ps, measures = "Shannon") %>%
+  rownames_to_column(var = "SampleID")
+metadata_df <- data.frame(sample_data(ps)) %>%
+  rownames_to_column(var = "SampleID")
+merged_df <- left_join(shannon_df, metadata_df, by = "SampleID")
+merged_df$Season <- factor(merged_df$Season, levels = c("Winter", "Spring", "Summer", "Fall"))
+merged_df$Location <- factor(merged_df$Location, levels = c("MIS", "STA", "MAB"))
+
+p2 <- ggboxplot(data = merged_df,
+                x = "Season",
+                color = "Location",
+                y = "Shannon",
+                add = "jitter",
+                palette = c("green3", "steelblue2", "salmon"))
+p2
+
+# per-site seasonal richness
+ps_MIS <- subset_samples(ps, Location == "MIS")
+ps_STA <- subset_samples(ps, Location == "STA")
+ps_MAB <- subset_samples(ps, Location == "MAB")
+
+my_comparisons <- list(c("Summer", "Spring"),
+                       c("Winter", "Summer"),
+                       c("Fall", "Summer"),
+                       c("Fall", "Spring"),
+                       c("Fall", "Winter"))
+
+for (psx in list(MIS = ps_MIS, STA = ps_STA, MAB = ps_MAB)) {
+  sdf <- estimate_richness(psx, measures = "Shannon") %>% rownames_to_column("SampleID")
+  mdf <- data.frame(sample_data(psx)) %>% rownames_to_column("SampleID")
+  m   <- left_join(sdf, mdf, by = "SampleID")
+  m$Season <- factor(m$Season, levels = c("Winter","Spring","Summer","Fall"))
+  print(
+    ggboxplot(m, x = "Season", y = "Shannon", add = "jitter") +
+      stat_compare_means(method = "wilcox.test", comparisons = my_comparisons,
+                         label = "p.signif", hide.ns = FALSE) +
+      labs(y = "Shannon Diversity Index", title = unique(m$Location)) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  )
+}
+```
+
+# Bloom-phase diversity -- DEFERRED (no BloomStatus column yet)
+```{r eval = FALSE}
+# [CHANGED vs 16S] Set eval=FALSE: the metadata has no BloomStatus column
+# (Pre/Bloom/Post), same data gap as 16S. Re-enable once BloomStatus is added.
+# Mirrors the 16S bloom-phase Shannon plots (MIS/STA, wilcox comparisons).
+```
+
+
+#EXPORT CHUNK 
+```{r}
+# figures (objects already built by their chunks)
+ggsave(file.path(dir_fig, "class_bar.png"), c1_top, width=16, height=10, dpi=300)
+ggsave(file.path(dir_fig, "order_bar.png"),   o_top,        width=14, height=8, dpi=300)
+ggsave(file.path(dir_fig, "family_bar.png"),  f_top,        width=14, height=9, dpi=300)
+ggsave(file.path(dir_fig, "summer_class.png"),c1_summer,    width=12, height=8, dpi=300)
+ggsave(file.path(dir_fig, "nmds_season.png"), seasonplot,   width=9,  height=7, dpi=300)
+ggsave(file.path(dir_fig, "nmds_location.png"),locationplot,width=9,  height=7, dpi=300)
+
+# stats -> CSV (as.data.frame makes adonis2 / anosim / anova results writable)
+write.csv(as.data.frame(permanova_season), file.path(dir_stat, "permanova_season.csv"))
+write.csv(as.data.frame(permanova_site),   file.path(dir_stat, "permanova_site.csv"))
+write.csv(as.data.frame(disp_season_aov),  file.path(dir_stat, "betadisper_season.csv"))
+write.csv(as.data.frame(disp_site_aov),    file.path(dir_stat, "betadisper_site.csv"))
+# ANOSIM has no direct data.frame method -- pull the summary stats
+anosim_tbl <- data.frame(
+  comparison    = c("Season", "Location"),
+  anosim_R      = c(ano_season$statistic, ano_site$statistic),
+  significance  = c(ano_season$signif,    ano_site$signif)
+)
+write.csv(anosim_tbl, file.path(dir_stat, "anosim.csv"), row.names = FALSE)
+
+# Shannon per-sample values
+write.csv(merged_df[, c("SampleID","Shannon","Season","Location")],
+          file.path(dir_stat, "shannon_by_sample.csv"), row.names = FALSE)
+
+# NMDS stress (one number, worth recording per run)
+writeLines(paste("NMDS stress:", round(nmds$stress, 4)),
+           file.path(dir_stat, "nmds_stress.txt"))
+
+cat("Export complete:", out_base, "\n")
+
+```
+
+
