@@ -1,8 +1,8 @@
-# envs
+# Envs
 
 saved copies of the conda environments the metagenome pipeline uses. each file lists every tool and exact version, so you can rebuild the same setup instead of guessing.
 
-## files
+## Files
 
 ```
 Metagenomics_Eggleston_Lab.yml   main tools, megahit, bowtie2, samtools, metabat2, snakemake
@@ -11,7 +11,7 @@ prokka.yml                       prokka for gene annotation
 anvio-9.yml                      anvi'o 9
 ```
 
-## rebuilding one
+## Rebuilding One
 
 ```
 source /home/mlinderman/modules/miniconda3/latest/etc/profile.d/conda.sh
@@ -29,7 +29,7 @@ swap in whichever file you need. the scripts expect these exact environment name
 
 *note, if `conda env create` hangs on "Solving environment", use `mamba env create -f file.yml` instead (see the root readme).
 
-## saving a new one
+## Saving a New One
 
 if you install something new and want to save the environment the same way
 ```

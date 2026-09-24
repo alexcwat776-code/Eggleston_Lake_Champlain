@@ -1,20 +1,20 @@
-# 16S processing
+# 16S Processing
 
 turns raw 16S reads into one clean table of named ASVs across all 251 samples (E400 to E672). the ada steps run in the `dada2` conda environment. see `../README.md` (the amplicons overview) for the bigger picture.
 
-## files
+## Files
 
 ```
-build_metadata.R             builds the sample info table from the lab sample database
-dada2_batch.R                cleans up one sequencing batch
-run_dada2_batch.slurm        sends dada2_batch.R to SLURM
-merge_batches.R              merges all batches and assigns taxonomy
-run_merge.slurm              sends merge_batches.R to SLURM
-qc_16S.R                     sanity checks on the final tables
+build_metadata.R                       builds the sample info table from the lab sample database
+dada2_batch.R                          cleans up one sequencing batch
+run_dada2_batch.slurm                  sends dada2_batch.R to SLURM
+merge_batches.R                        merges all batches and assigns taxonomy
+run_merge.slurm                        sends merge_batches.R to SLURM
+qc_16S.R                               sanity checks on the final tables
 16SpostProcessingFORALLDATA-Alex.Rmd   figures, stats, and corncob, run in RStudio
 ```
 
-## 1. build the metadata, build_metadata.R
+## 1. Build the Metadata, build_metadata.R
 
 makes the sample info table from the Eggleston Lab Sample Database spreadsheet. site, date, season, probe readings (water temp, pH, chlorophyll, phycocyanin, and so on), and bloom phase. 18S uses this same table. rerun it whenever new samples get added.
 
@@ -27,7 +27,7 @@ output -> `metadata_E400to672.csv`
 
 *note, bloom phases (pre, bloom, post) come straight from Table 2 of Camilla Salwen's thesis, not recalculated from phycocyanin. MAB is always "Non". 2025 and 2026 are left blank on purpose, her method needs field observations we do not have for those years.
 
-## 2. clean up each batch, dada2_batch.R
+## 2. Clean Up Each Batch, dada2_batch.R
 
 the big cleaning step. for one batch it cuts the primers off, trims the bad ends of the reads, throws out low quality reads, fixes sequencing errors, and joins each forward read to its reverse read. it also saves quality plots.
 
@@ -62,7 +62,7 @@ outputs, in `dada2_out_paired/` ->
 
 *note, the script also has a batch called run2. it is a rerun of run1 and does not get merged, run1 is the one used.
 
-## 3. merge and assign taxonomy, merge_batches.R
+## 3. Merge and Assign Taxonomy, merge_batches.R
 
 once every batch is done, this
 1. stitches all the batch tables into one
@@ -82,7 +82,7 @@ outputs, in `dada2_out_paired/` ->
 
 *note, do not point this at the 18S reference, it only has eukaryotes so every bacterium comes back unnamed.
 
-## 4. sanity check, qc_16S.R
+## 4. Sanity Check, qc_16S.R
 
 prints a bunch of checks without changing anything. whether every sample has metadata (any that do not get silently dropped later), read counts per sample, the most common phyla, and whether cyanobacteria are higher at MIS and STA than MAB in bloom months like they should be.
 
@@ -92,6 +92,6 @@ Rscript qc_16S.R paired
 
 *note, the 2023 samples were sequenced about 4x shallower than the newer ones, keep that in mind before comparing across years.
 
-## 5. figures, stats, and corncob, 16SpostProcessingFORALLDATA-Alex.Rmd
+## 5. Figures, Stats, and Corncob, 16SpostProcessingFORALLDATA-Alex.Rmd
 
 download the three csvs and the metadata csv from ada, then open this in RStudio. what it does is laid out in `../README.md` (the amplicons overview).

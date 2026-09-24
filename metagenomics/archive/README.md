@@ -1,10 +1,10 @@
-# archive
+# Archive
 
 the first test runs from before the snakemake pipeline, done by hand one step at a time. kept so you can see how each step works on its own. you do not need to run any of these, `../run_SITE.slurm` does all of it now.
 
 the tests went small to big, one sample, then three pooled, then the full sites.
 
-## files
+## Files
 
 ```
 megahit_trial_E508.slurm    assembled one sample (E508) by itself
@@ -17,7 +17,7 @@ checkm_MIS3.slurm           graded the MIS3 bins with checkm
 prokka_bin52.slurm          annotated genes on bin 52 from MIS3, a high quality bin
 ```
 
-## order they ran in
+## Order They Ran In
 1. `megahit_trial_E508.slurm` -> `megahit_E508/final.contigs.fa`
 2. `map_E508.slurm` -> `mapped/E508.bam`
 3. `megahit_trial_MIS3.slurm` -> `megahit_MIS3/final.contigs.fa`

@@ -1,24 +1,24 @@
-# viromes
+# Viromes
 
-finds viruses in the metagenome assemblies, especially cyanophages, the viruses that infect cyanobacteria. the idea is that viruses might help start or end blooms by killing cyanobacteria or messing with how they work.
+finds viruses in the metagenome assemblies, especially cyanophages, the viruses that infect cyanobacteria.
 
 this runs on the site assemblies from `../metagenomics/` (`results/SITE/megahit/final.contigs.fa`), so do that first. runs on ada from a folder called `~/virome_out`. see the root readme for ada, conda, and SLURM basics.
 
-## files
+## Files
 
 ```
 run_genomad.slurm    finds viral sequences in an assembly
 run_checkv.slurm     grades how complete those viral sequences are
 ```
 
-## the order
+## The Order
 1. rename the contigs
 2. find viral sequences with genomad
 3. check their quality with checkv
 4. compare them to known viruses with IMG/VR and BLAST
 5. annotate their genes with DRAM-v
 
-## setting up
+## Setting Up
 
 genomad and checkv live in the `virome` conda environment and each need a database downloaded once.
 
@@ -35,7 +35,7 @@ checkv download_database ~/virome_dbs/
 ln -s ~/virome_dbs/checkv-db-v1.5 ~/virome_dbs/checkv_db
 ```
 
-## 1. rename the contigs
+## 1. Rename the Contigs
 
 every assembly names its contigs `k141_1`, `k141_2`, and so on, so different sites would end up with the same names. put the site name in front first
 ```
@@ -47,7 +47,7 @@ grep -c "^>" renamed_contigs/MIS_full.contigs.fa
 
 that last line counts the contigs, it should match the original assembly. do the same for STA and MAB.
 
-## 2. find viral sequences, run_genomad.slurm
+## 2. Find Viral Sequences, run_genomad.slurm
 
 genomad goes through every contig and decides if it looks like a virus, a plasmid, or regular DNA, and gives the viral ones a rough taxonomy.
 ```
@@ -60,7 +60,7 @@ outputs, in `genomad/SITE/SITE.contigs_summary/` ->
 - `SITE.contigs_virus.fna`, the viral sequences
 - `SITE.contigs_virus_summary.tsv`, one row per viral sequence with its score and taxonomy
 
-## 3. check quality, run_checkv.slurm
+## 3. Check Quality, run_checkv.slurm
 
 genomad says what looks viral, checkv says how complete each one actually is. basically checkm but for viruses. it sorts each one into complete, high, medium, low, or not determined.
 ```
@@ -75,11 +75,11 @@ results so far, genomad found 11,200 viral sequences at MIS, 3,832 at STA, and 3
 
 cyanophage family (Kyanoviridae) sequences show up at all three sites, but mostly as short pieces, usually under 10% of a full genome. so they are definitely there, there just is not enough of any one to rebuild the whole thing.
 
-## 4. compare to known viruses, IMG/VR and BLAST
+## 4. Compare to Known Viruses, IMG/VR and BLAST
 
 IMG/VR is a huge Department of Energy database of viruses other people have already found. comparing our pieces against it tells us what they most likely are.
 
-### downloading
+### Downloading
 
 1. make a free JGI account and go to IMG/VR on the JGI data portal
 2. from the `IMG_VR_2022-12-19_7` release, get the full files, not the high confidence ones, since that set is too small to match our short pieces against
@@ -93,7 +93,7 @@ IMG/VR is a huge Department of Energy database of viruses other people have alre
 
 *note, the unzipped sequence file is around 160 GB. pull out what you need then delete it, or you will run out of space on ada.
 
-### pulling out the reference viruses
+### Pulling Out the Reference Viruses
 
 grab the IDs of every virus IMG/VR calls Kyanoviridae, then pull just those sequences out of the big file
 ```
@@ -124,13 +124,13 @@ blastn -query kyano_all_MIS.fna -db kyano_taxonomy_db -outfmt 6 -evalue 1e-6 -ou
 
 *note, BLAST does not add column names to its output, add them before sharing the file.
 
-results so far, about half our Kyanoviridae pieces at each site match a known genome, with long matches at 84 to 98% identity. the best match came from a freshwater river, similar to ours.
+results so far, about half our Kyanoviridae pieces at each site match a known genome, with long matches at 84 to 98% identity. the best match came from a freshwater river.
 
 *note, searching only against viruses with a known Microcystis or Dolichospermum host found nothing, because most IMG/VR Kyanoviridae never got a host assigned. so right now we can say ours look like known cyanophages, not which cyanobacterium they infect.
 
-## 5. annotate viral genes, DRAM-v
+## 5. Annotate Viral Genes, DRAM-v
 
-DRAM-v labels the genes on the viral sequences. the interesting ones are AMGs, genes a phage basically steals from its host. cyanophages are known to carry photosynthesis genes that keep the host running during infection, which would tie the viruses directly to how blooms behave.
+DRAM-v labels the genes on the viral sequences. the interesting ones are AMGs, genes a phage picks up from its host.
 
 build the `dram` environment with mamba and python 3.8, then set up the databases
 ```

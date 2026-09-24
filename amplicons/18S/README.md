@@ -1,8 +1,8 @@
-# 18S processing
+# 18S Processing
 
 turns raw 18S reads into one clean table of named ASVs across 213 samples (E417 to E672). 18S picks up eukaryotes, so algae, diatoms, ciliates, fungi, and other protists. same idea as 16S with a few differences, called out below. the ada steps run in the `dada2` conda environment. see `../README.md` (the amplicons overview) for the bigger picture.
 
-## files
+## Files
 
 ```
 dada2_batch_18S.R        cleans up one sequencing batch
@@ -15,13 +15,13 @@ BuildFile_v2.R           builds the eukaryote reference used for naming ASVs
 
 the metadata table comes from `../16S/build_metadata.R`, both use the same one.
 
-## 1. build the eukaryote reference, BuildFile_v2.R
+## 1. Build the Eukaryote Reference, BuildFile_v2.R
 
 takes the SILVA 138.2 database, keeps only the eukaryotes, and trains a reference out of them that step 3 uses to name ASVs. only needs to run once.
 
 *note, this is its own thing from the 16S reference. the 16S one has no eukaryotes, the 18S one has no bacteria, so never swap them.
 
-## 2. clean up each batch, dada2_batch_18S.R
+## 2. Clean Up Each Batch, dada2_batch_18S.R
 
 same as 16S. cut primers, trim bad read ends, throw out low quality reads, fix sequencing errors, join forward and reverse reads, save quality plots.
 
@@ -52,7 +52,7 @@ outputs, in `dada2_out_paired/` ->
 
 *note, check `track_BATCH.csv` after every batch same as 16S. if "merged" is way lower than "filtered", the reads are not overlapping.
 
-## 3. merge and assign taxonomy, merge_batches_18S.R
+## 3. Merge and Assign Taxonomy, merge_batches_18S.R
 
 once every batch is done, this
 1. stitches all the batch tables into one
@@ -74,6 +74,6 @@ outputs, in `dada2_out_paired/` ->
 
 *note, 18S names go domain, kingdom, phylum, class, order, family, genus. no species. expect a lot of ASVs to come back unnamed below class, eukaryote references are just thinner than bacterial ones.
 
-## 4. figures, stats, and corncob, 18SPostProcessing.Rmd
+## 4. Figures, Stats, and Corncob, 18SPostProcessing.Rmd
 
 download the three csvs and the metadata csv from ada, then open this in RStudio. what it does is laid out in `../README.md` (the amplicons overview).

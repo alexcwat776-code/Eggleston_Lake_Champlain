@@ -1,4 +1,4 @@
-# metagenomics
+# Metagenomics
 
 for metagenomes the sequencing center sequenced all the DNA in each sample, not just one gene. the goal is to rebuild actual genomes of the organisms in the lake, called MAGs (metagenome assembled genomes).
 
@@ -6,7 +6,7 @@ this used to be a set of scripts run one at a time by hand (Birch's version, in 
 
 runs on ada from a folder called `~/Eggleston_Metagenomes`. see the root readme for ada, conda, and SLURM basics.
 
-## files
+## Files
 
 ```
 Snakefile                the pipeline, every step and how they connect
@@ -22,7 +22,7 @@ archive/                 the first test scripts, see the readme in there
 envs/                    saved conda environments, see the readme in there
 ```
 
-## 1. set up, config.yaml
+## 1. Set Up, config.yaml
 
 put the raw `.fastq.gz` files in `~/Eggleston_Metagenomes/fastq/`, then list which samples go with which site in `config.yaml`. left side is the sample number, right side is the start of the file name before `_R1_001.fastq.gz`
 ```
@@ -34,7 +34,7 @@ each site gets pooled into one assembly, 11 samples for MIS, 11 for STA, 10 for 
 
 *note, change the conda environment names and the checkm data path in `config.yaml` to your own.
 
-## 2. run the pipeline, run_MIS.slurm / run_STA.slurm / run_MAB.slurm
+## 2. Run the Pipeline, run_MIS.slurm / run_STA.slurm / run_MAB.slurm
 
 ```
 cd ~/Eggleston_Metagenomes
@@ -54,7 +54,7 @@ one per site, they can all run at once. each asks for 168 hours since assembly c
 
 *note, do not delete the `mapped/` folders, anvi'o needs the `.bam` files.
 
-## 3. sort bins by quality, make_quality_table.sh
+## 3. Sort Bins by Quality, make_quality_table.sh
 
 run it directly, not with sbatch
 ```
@@ -68,11 +68,11 @@ labels every bin
 
 output -> `results/SITE/checkm_SITE_quality_SORTED.txt`
 
-results so far, 185 bins at MIS, 126 at STA, 121 at MAB (432 total). only 7 are high quality, which is normal for lake water. one of the 7 is a cyanobacterium and it came from MAB, the non bloom site.
+results so far, 185 bins at MIS, 126 at STA, 121 at MAB (432 total). only 7 are high quality. one of the 7 is a cyanobacterium and it came from MAB, the non bloom site.
 
 *note, checkm also guesses what each bin is, but those names are rough. trust the completeness and contamination numbers, not the names.
 
-## 4. anvi'o, run_anvio_site.slurm and launch_anvio.sh
+## 4. Anvi'o, run_anvio_site.slurm and launch_anvio.sh
 
 anvi'o lets you look at bins and clean them up by hand in a browser. first build the databases for a site, which also pulls in the metabat2 bins
 ```
@@ -90,10 +90,10 @@ each site gets its own port, MIS 8080, STA 8081, MAB 8082. in VS Code go to the 
 
 *note, keep the `anvio-9` environment for anvi'o only, installing anything else into it breaks it.
 
-## 5. gene annotation, prokka
+## 5. Gene Annotation, Prokka
 
 prokka finds the genes in a genome and guesses what each one does. so far it has only been run on one high quality bin, `archive/prokka_bin52.slurm`. to run it on another bin, copy that script and change the bin name. Birch's `../METAG/` has the fuller version, including circular genome pictures with CGView.
 
-## viromes
+## Viromes
 
 the virus work runs on these same assemblies (`results/SITE/megahit/final.contigs.fa`), see `../viromes/`.
