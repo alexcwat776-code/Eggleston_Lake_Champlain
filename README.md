@@ -16,7 +16,6 @@ the DNA from each sample gets sequenced a few ways
 - metagenomes, all the DNA in the sample, used to rebuild genomes
 - viromes, the viruses, especially the ones that infect cyanobacteria
 
-the plan is two papers. paper 1 describes who lives in the lake and how that changes by site and season, using all four data types. paper 2 focuses on the cyanobacteria and bloom vs non bloom conditions, including whether viruses play a role.
 
 ## Whats In Here
 
