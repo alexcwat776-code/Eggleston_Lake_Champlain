@@ -4,7 +4,7 @@ multi omic analysis of cyanobacterial blooms in lake champlain. Eggleston Lab, M
 
 every folder has its own readme with the steps for that part. this one covers the big picture and setup.
 
-## The Big Picture
+## Overview 
 
 we sample three spots on lake champlain, Missisquoi Bay (MIS), St. Albans Bay (STA), and Malletts Bay (MAB). MAB is the reference site the other two get compared against.
 
@@ -17,7 +17,7 @@ the DNA from each sample gets sequenced a few ways
 - viromes, the viruses, especially the ones that infect cyanobacteria
 
 
-## Whats In Here
+## Contents 
 
 ```
 amplicons/             16S and 18S
